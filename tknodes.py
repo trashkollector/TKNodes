@@ -36,11 +36,11 @@ class TKPrompt:
                                        "The subject turns their head.",
                                        "The subject looks at the other person.",                                       
                                        "The subject looks away from the other person.", ],),
-                "camera_zoom": ([      "The camera does not zoom.",
-                                       "The camera zooms in slowly.", 
+                "camera_zoom": ([      "The camera is stationary.",
+                                       "The camera zooms in very slowly.", 
                                        "The camera zooms in quickly.",
                                        "The camera zooms out slowly.",
-                                       "The camera zooms in slowly.",  ],),   
+                                       "The camera zooms out very slowly.",  ],),   
                "camera_pan": ([         "The camera does not pan.",
                                         "The camera pans slowly to the right.", 
                                        "The camera pans quickly to the right.",
@@ -67,12 +67,6 @@ class TKPrompt:
 
     CATEGORY = "TKNodes"
 
-    # Assume 'video_tensor' is your video data as a PyTorch tensor
-    # Format: [T, H, W, C] (Time, Height, Width, Channels)
-    # Data type should be uint8, with values in the range [0, 255]
-    #  number of channels (e.g., 3 for RGB)
-    # To represent a video, NumPy extends this concept by adding an extra dimension for the frames.
-    #    This results in a 4D array with the shape (frames, height, width, channels).
     
     def tkprompt(self, positve_prompt, negative_prompt, ignore_all_camera_options,
                  subject_to_camera, camera_zoom, camera_pan, camera_tilt, camera_depth):
