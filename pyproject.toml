@@ -1,0 +1,14 @@
+[project]
+name = "ComfyUI-TKNodes"
+description = "Various Nodes"
+version = "1.00"
+license = { file = "LICENSE" }
+
+[project.urls]
+Repository = "https://github.com/trashkollector/TKNodes"
+
+[tool.comfy]
+PublisherId = "trashkollector"
+DisplayName = "ComfyUI-TKNodes"
+Icon = ""
+
