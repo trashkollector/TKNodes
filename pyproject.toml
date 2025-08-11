@@ -1,7 +1,7 @@
 [project]
-name = "ComfyUI-TKNodes"
+name = "ComfyUI-TK-Nodes"
 description = "Various Nodes"
-version = "1.02"
+version = "1.00"
 license = { file = "LICENSE" }
 
 [project.urls]
