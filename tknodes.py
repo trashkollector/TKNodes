@@ -25,34 +25,43 @@ class TKPrompt:
                     "multiline": True, #True if you want the field to look like the one on the ClipTextEncode node
                     "default": " incorrect body proportions. bad drawing, bad anatomy, bad body shape, blurred details, awkward poses, incorrect shadows, unrealistic expressions, lack of texture, poor composition, text, logo, out of aspect ratio, body not fully visible, ugly, defects, noise, fuzzy, oversaturated, soft, blurry, out of focus, frame",
                     "lazy": True             }),
-                "ignore_all_camera_options" : ("BOOLEAN", {"default":False}),
-                "subject_to_camera": (["The subject is looking straight forward at the camera.", 
-                                       "The subject is looking away from the camera.",
-                                       "The subject is looking up at the camera.",       
-                                       "The subject is looking down at the camera.",                                       
-                                       "The subject is looking up.",
-                                       "The subject is looking down.",
-                                       "The subject closes their eyes.", 
-                                       "The subject turns their head.",
-                                       "The subject looks at the other person.",                                       
-                                       "The subject looks away from the other person.", ],),
-                "camera_zoom": ([      "The camera is stationary.",
-                                       "The camera zooms in very slowly.", 
-                                       "The camera zooms in quickly.",
-                                       "The camera zooms out slowly.",
-                                       "The camera zooms out very slowly.",  ],),   
-               "camera_pan": ([         "The camera does not pan.",
-                                        "The camera pans slowly to the right.", 
-                                       "The camera pans quickly to the right.",
-                                       "The camera pans slowly to the left.",
-                                       "The camera pans quickly to the left.", ],),      
-               "camera_tilt": ([         "The camera does not tilt.",
-                                        "The camera tilts upward.", 
-                                       "The camera tilts downward.", ],),     
-               "camera_depth": ([      "The camera takes a normal shot.",
-                                       "The camera uses a wide angle shot.",
-                                        "The camera uses a telephoto view.", 
-                                       "The camera takes a close up shot.",],),                                         
+               
+                
+                "camera": ([" ",
+                            "The camera performa a dolly-out shot. ",
+                            "The camera performs a  dolly-in. ",
+                            "A reverse dolly shot of the character. ",
+                            "A pan shot of the character. ",
+                            "The camera tilts upward. ",
+                            "The camera is above the scene, it is facing downward. ",
+                            "The camera gradually zooms in. ",
+                            "The camera gradually zooms out. ",
+                            "The camera tracks the character as the character moves. ",
+                            "A crane shot showing the expansiveness of the scene. ",
+                            "An arc shot, circling the character in the scene. ",
+                            "A handheld shot  with the camera moving slightly. ",
+                            "An orbit shot around a the character. ",
+                            "A parallax shot moving through the scene. ",
+                            "A push-pull shot on the character.  ",
+                            "An aerial shot soaring over the scene, the camera tilting down. ",
+                            "A lateral shot tracking a character. ", ],),
+                            
+                            
+                 "light": ([" ",
+                            "Scene has warm light. ",
+                            "Scene has morning light. ",
+                            "Scene  has evenling light. ",
+                            "There is a spotlight on the subject. ",
+                            "The scene has backlighting. ",
+                            "The scene has dramatic lighting. ",
+                            "The scene has bright neon lighting. ",
+                            "The scene has candlelit lighting. ",
+                            "The scene has harsh shadows. ",
+                            "The scene has specular lighting. ",
+                            "The scene has soft diffused lighting. ",
+                            "The scene has radiant god rays. ",
+                            "The scene is luminescent.     ",    ],), 
+                                      
                 }
             }
         
@@ -68,13 +77,9 @@ class TKPrompt:
     CATEGORY = "TKNodes"
 
     
-    def tkprompt(self, positve_prompt, negative_prompt, ignore_all_camera_options,
-                 subject_to_camera, camera_zoom, camera_pan, camera_tilt, camera_depth):
-
-        if (ignore_all_camera_options) :
-            return (positve_prompt, negative_prompt)
+    def tkprompt(self, positve_prompt, negative_prompt, camera, light):
             
-        pos =    positve_prompt+ " "+subject_to_camera + "   " +  camera_zoom + "  "+ camera_pan + "  "+ camera_tilt + "  " + camera_depth
+        pos =    positve_prompt+ camera + light
             
         return (pos,negative_prompt)
         
