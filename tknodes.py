@@ -2,11 +2,11 @@ import nodes
 import torch
 
 
-#  TK Collector -  Various Nodes for Comfy UI
+#  TK Collector -  Various Nodes for Comfy UI, TKPromptEnhanced
 #  August 10, 2025
 #  https://civitai.com/user/trashkollector175
     
-class TKPrompt:
+class TKPromptEnhanced:
 
     def __init__(self):
         pass
@@ -28,23 +28,23 @@ class TKPrompt:
                
                 
                 "camera": ([" ",
-                            "The camera performa a dolly-out shot. ",
+                            "The camera performs a dolly-out shot. ",
                             "The camera performs a  dolly-in. ",
-                            "A reverse dolly shot of the character. ",
-                            "A pan shot of the character. ",
+                            "A reverse dolly shot of the person. ",
+                            "A pan shot of the person. ",
                             "The camera tilts upward. ",
                             "The camera is above the scene, it is facing downward. ",
                             "The camera gradually zooms in. ",
                             "The camera gradually zooms out. ",
-                            "The camera tracks the character as the character moves. ",
+                            "The camera tracks the person as the person moves. ",
                             "A crane shot showing the expansiveness of the scene. ",
-                            "An arc shot, circling the character in the scene. ",
+                            "An arc shot, circling the person.   ",
                             "A handheld shot  with the camera moving slightly. ",
-                            "An orbit shot around a the character. ",
+                            "An orbit shot around the person. ",
                             "A parallax shot moving through the scene. ",
-                            "A push-pull shot on the character.  ",
+                            "A push-pull shot on the person.  ",
                             "An aerial shot soaring over the scene, the camera tilting down. ",
-                            "A lateral shot tracking a character. ", ],),
+                            "A lateral shot tracking a person. ", ],),
                             
                             
                  "light": ([" ",
@@ -70,14 +70,14 @@ class TKPrompt:
     RETURN_NAMES = ("positive","negative")
 
 
-    FUNCTION = "tkprompt"
+    FUNCTION = "tkpromptenhanced"
 
     #OUTPUT_NODE = False
 
     CATEGORY = "TKNodes"
 
     
-    def tkprompt(self, positve_prompt, negative_prompt, camera, light):
+    def tkpromptenhanced(self, positve_prompt, negative_prompt, camera, light):
             
         pos =    positve_prompt+ camera + light
             
