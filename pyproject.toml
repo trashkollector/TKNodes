@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-HandyNodes-KT"
-description = "Various Nodes - TKPromptEnhanced "
-version = "1.0.0"
+description = "Various Nodes - TKPromptEnhanced - Includes prompts for camera and light"
+version = "1.0.1"
 license = { file = "LICENSE" }
 
 [project.urls]
