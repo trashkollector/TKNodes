@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-HandyNodes-KT"
-description = "Various Nodes - TKPromptEnhanced - Includes prompts for camera and light"
-version = "1.0.1"
+description = "Various Nodes - TKPromptEnhanced - cam options, TKVideoUserInputs - consolidated inputs, TKSamplerUserInputs - consolidated inputs"
+version = "1.0.2"
 license = { file = "LICENSE" }
 
 [project.urls]
