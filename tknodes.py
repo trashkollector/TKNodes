@@ -130,7 +130,7 @@ class TKVideoUserInputs:
         pass
     
     @classmethod
-    def INPUT_TYPES(cls):
+    def INPUT_TYPES(s):
         return {
             "required": {
                 "width":  ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
@@ -138,9 +138,9 @@ class TKVideoUserInputs:
                 "length_selector": (
                     ["Use # Frames", "Use # Seconds"],
                 ),
-                "total_frames": ("INT", {"default": 81, "min": 32, "max": 1000}),
+                "total_frames": ("INT", {"default": 81,   "min": 32, "max": 1000}),
                 "num_seconds": ("FLOAT", {"default": 5.0, "min": 2.0, "max": 1000}),
-                "fps": ("FLOAT", {"default": 16.0, "min": 16.0, "max": 60.0}),
+                "fps":         ("FLOAT", {"default": 16.0, "min": 16.0, "max": 60.0}),
                 
 
             },
@@ -148,13 +148,13 @@ class TKVideoUserInputs:
 
     RETURN_TYPES = ("INT", "INT","INT","FLOAT")
     RETURN_NAMES = ("video_width", "video_height", "total_frames","fps")
-    FUNCTION = "userinputs"
+    FUNCTION = "main"
     CATEGORY = "TKNodes"
 
-    def userinputs(self, mode, width, height, total_frames, length_selector, fps, num_seconds, ):
+    def main(self, width, height, total_frames, length_selector, fps, num_seconds, ):
      
         if (length_selector=="Use # Seconds") :
-            total_frames = fps * num_seconds
+            total_frames = int(fps * num_seconds)
         return (width, height, total_frames, fps )
 
 
