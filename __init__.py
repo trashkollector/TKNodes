@@ -9,7 +9,7 @@ NODE_CLASS_MAPPINGS = {
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-     "TKPromptEnhanced": "Enhanced Prompt w Cam",
+     "TKPromptEnhanced": "Enhanced Prompt (Cam)",
      "TKVideoUserInputs": "Video User Inputs",
      "TKSamplerUserInputs": "Sampler Inputs",
 }
