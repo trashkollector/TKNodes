@@ -125,78 +125,44 @@ class TKPromptEnhanced:
 
     
      
-class TKVideoUserInputs :
+class TKVideoUserInputs:
     def __init__(self):
         pass
-
+    
     @classmethod
-    def INPUT_TYPES(s):
-
+    def INPUT_TYPES(cls):
         return {
             "required": {
-            
-                "video_width": ("INT", {
-                    "default": "1024", "min": 100, "max": 4000,
-                    "lazy": True  }),      
-                "video_height":  ("INT", {
-                    "default": "768", "min": 100, "max": 4000,
-                    "lazy": True   }),                  
-                "video_orientation": ([
-                    "Landscape",
-                    "Portait",
-                    
-                    ],),
-                "length_selector": ([
-                    "Use # Frames",    
-                    "Use # Seconds",  
-                      ],),
-                "num_frames": ("INT", {
-                    "default": "81", "min": 2, "max": 5000,
-                    "lazy": True     }),   
-                "num_seconds": ("FLOAT", {
-                    "default": "5.0",  "min": 1.0, "max": 100.0,
-                    "lazy": True     }),       
-                "fps": ("FLOAT", {
-                    "default": "16",  "min": 8, "max": 60,
-                    "lazy": True     }),                
-             
-                }
-            }
-        
+                "width":  ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
+                "height": ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
+                "length_selector": (
+                    ["Use # Frames", "Use # Seconds"],
+                ),
+                "total_frames": ("INT", {"default": 81, "min": 32, "max": 1000}),
+                "num_seconds": ("FLOAT", {"default": 5.0, "min": 2.0, "max": 1000}),
+                "fps": ("FLOAT", {"default": 16.0, "min": 16.0, "max": 60.0}),
+                
 
-    RETURN_TYPES = ("INT",             "INT",     "INT",        "FLOAT")
-    RETURN_NAMES = ("video_width","video_height","total_frames", "fps")
+            },
+        }
 
-
-    FUNCTION = "tkvideouserinputs"
-
-    #OUTPUT_NODE = False
-
+    RETURN_TYPES = ("INT", "INT","INT","FLOAT")
+    RETURN_NAMES = ("video_width", "video_height", "total_frames","fps")
+    FUNCTION = "userinputs"
     CATEGORY = "TKNodes"
 
-    
-    def tkvideouserinputs(self, video_width, video_height, video_orientation, length_selector, num_frames, num_seconds, fps ):
-            
-        if (video_orientation == "Landscape") :
-            if video_width < video_height :
-                i = video_width
-                video_width = video_height
-                video_height = i
-        else :  #portrait
-            if video_width > video_height :
-                i = video_width
-                video_width = video_height
-                video_height = i   
-          
-        frames = num_frames
-        
-        if (length_selector== "Use # Seconds") :
-            frames = int(num_seconds * fps)
-            
-            
-        return ( video_width, video_height, frames, fps)
-        
-    
+    def userinputs(self, mode, width, height, total_frames, length_selector, fps, num_seconds, ):
+     
+        if (length_selector=="Use # Seconds") :
+            total_frames = fps * num_seconds
+        return (width, height, total_frames, fps )
+
+
+
+
+
+
+
     
 class TKSamplerUserInputs :
     def __init__(self):

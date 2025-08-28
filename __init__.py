@@ -6,3 +6,12 @@ NODE_CLASS_MAPPINGS = {
     "TKSamplerUserInputs": tknodes.TKSamplerUserInputs,
 }
 
+
+# A dictionary that contains the friendly/humanly readable titles for the nodes
+NODE_DISPLAY_NAME_MAPPINGS = {
+     "TKPromptEnhanced": "Enhanced Prompt w Cam",
+     "TKVideoUserinputs": "Video User Inputs",
+     "TKSamplerUserInputs": "Sampler Inputs",
+
+
+}
