@@ -168,9 +168,10 @@ class TKVideoUserInputsCanvas {
         // Get widgets
         const widthWidget = node.widgets?.find(w => w.name === 'width');
         const heightWidget = node.widgets?.find(w => w.name === 'height');
-
-		console.log("blah"+heightWidget);
-
+        const fpsWidget = node.widgets?.find(w => w.name === 'fps');
+		const selectorWidget = node.widgets?.find(w => w.name === 'length_selector');
+	    const totFramesWidget = node.widgets?.find(w => w.name === 'total_frames');
+		const numSecsWidget = node.widgets?.find(w => w.name === 'num_seconds');
         const rescaleValueWidget = node.widgets?.find(w => w.name === 'rescale_value');
         
 
@@ -193,6 +194,12 @@ class TKVideoUserInputsCanvas {
         // Store widget references
         this.widthWidget = widthWidget;
         this.heightWidget = heightWidget;
+		this.fpsWidget = fpsWidget;
+		this.selectorWidget = selectorWidget;
+		this.totFramesWidget = totFramesWidget;
+		this.numSecsWidget = numSecsWidget;
+        		
+		
  
         // Override onDrawForeground
         node.onDrawForeground = function(ctx) {
@@ -492,15 +499,28 @@ class TKVideoUserInputsCanvas {
         if (this.widthWidget && this.heightWidget) {
             const width = this.widthWidget.value;
             const height = this.heightWidget.value;
+			const fps = this.fpsWidget.value;
+			const secs = this.numSecsWidget.value;
+			const nframes = this.totFramesWidget.value;
+			const sele = this.selectorWidget.value;
             const mp = ((width * height) / 1000000).toFixed(2);
             const aspectRatio = (width / height).toFixed(2);
             const pResolution = this.getClosestPResolution(width, height);
+			const calcSecs = (nframes / fps).toFixed(1);
+			const calcFrames = (fps * secs).toFixed(0);
             
+			console.log(sele);
             ctx.fillStyle = "#bbb";
             ctx.font = "12px Arial";
             ctx.textAlign = "center";
-            ctx.fillText(`${width} × ${height}  `,
-                        node.size[0] / 2, y);
+            ctx.fillText(`${width} × ${height}  `,        node.size[0] / 2, y+15);
+			if (sele == "Use # Frames") {
+				ctx.fillText(`FRAMES:${nframes}   FPS:${fps}   DUR:${calcSecs}  `,        node.size[0] / 2, y);
+			}
+			else {
+				ctx.fillText(`FRAMES:${calcFrames}   FPS:${fps}   DUR:${secs}  `,        node.size[0] / 2, y);
+			}
+			
         }
     }
     
@@ -1242,7 +1262,9 @@ class TKVideoUserInputsCanvas {
 app.registerExtension({
     name: "extTKVideoUserInputs",
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
+		
         if (nodeData.name === "TKVideoUserInputs") {
+		
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function() {
                 onNodeCreated?.apply(this, []);
