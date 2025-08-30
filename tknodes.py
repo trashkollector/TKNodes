@@ -114,7 +114,7 @@ class TKPromptEnhanced:
     def tkpromptenhanced(self, positve_prompt, negative_prompt,use_cam_options, camera_shot_size, camera_angle, camera_focus, camera_movement, light):
         
         
-        pos = positve_prompt +". "+ negative_prompt
+        pos = positve_prompt 
         
         if use_cam_options == True:
            pos =    positve_prompt+ ". "+ camera_angle+". "+ camera_focus+". "+ camera_movement+". "+ camera_shot_size+". "+ light
