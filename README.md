@@ -1,12 +1,14 @@
 # TKNodes (Handy Nodes for ComfyUI)
 
-# TKVideoUserInputs
+# TKVideoUserInputs - general purpose node for collecting inputs for creating a video.
 
 
 ![Alt text](assets/tkvideouserinputs.png)
 
 
-# TKEnhancedPrompt
+# TKEnhancedPrompt - node that contains positive/negative prompt +
+#                    common camera descriptives (so it saves you from typing too much)
+
 
 ![Alt text](assets/tkenhancedprompt.png)
 
