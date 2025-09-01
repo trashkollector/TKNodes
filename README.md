@@ -1,12 +1,14 @@
 # TKNodes
 
-TKVideoUserInputs
+# TKVideoUserInputs
+
+
 ![Alt text](assets/tkvideouserinputs.png)
 
 
-TKEnhancedPrompt
+# TKEnhancedPrompt
 
-
+![Alt text](assets/tkenhancedprompt.png)
 
 for manual install
 ---------------------
