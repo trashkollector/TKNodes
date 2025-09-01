@@ -1,6 +1,8 @@
 # TKNodes (Handy Nodes for ComfyUI)
 
 # TKVideoUserInputs - general purpose node for collecting inputs for creating a video.
+#                     specify video length by # Frames or by # Seconds
+#                     everything grouped together for tidier workflow.
 
 
 ![Alt text](assets/tkvideouserinputs.png)
