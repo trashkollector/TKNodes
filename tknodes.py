@@ -29,7 +29,7 @@ class TKPromptEnhanced:
                     "lazy": True             }),
                
                 "use_cam_options" : ("BOOLEAN", {
-                    "default" : True,}),
+                    "default" : True, "description":"Disable/Enable Camera options.  These camera descriptions simply get appended to the positive text."}),
                 
                 "camera_shot_size": ([
                             "-",
@@ -140,9 +140,9 @@ class TKVideoUserInputs:
                 "length_selector": (
                     ["Use # Frames", "Use # Seconds"],
                 ),
-                "total_frames": ("INT", {"default": 81,   "min": 32, "max": 1000}),
-                "num_seconds": ("FLOAT", {"default": 5.0, "min": 2.0, "max": 1000}),
-                "fps":         ("FLOAT", {"default": 16.0, "min": 16.0, "max": 60.0}),
+                "total_frames": ("INT", {"default": 81,   "min": 32, "max": 1000, "description" : "This value applies when length_selector = Use Frames"}),
+                "num_seconds": ("FLOAT", {"default": 5.0, "min": 2.0, "max": 1000, "description" : "This value applies when length_selector = Use Seconds"}),
+                "fps":         ("FLOAT", {"default": 16.0, "min": 16.0, "max": 60.0, "description" : "FPS from video info node"}),
                 
 
             },
@@ -219,17 +219,17 @@ class TKVideoAudioFuse :
                               
                 "audio1": ("AUDIO",),  
             
-                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10}),                
+                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                
 
             },
         
             "optional": {
             
                 "audio2": ("AUDIO",),    
-                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10}),                    
+                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
 
                 "audio3": ("AUDIO",),    
-                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10}),                    
+                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
             }
         }
         
@@ -254,12 +254,12 @@ class TKVideoAudioFuse :
         if  audio2 is not None :
             sr2 =audio2["sample_rate"]
             aud2 =  self.adjustVolume(audio2["waveform"], audio2_volume)
-            (avg1, sr) = self.average_audio_tensors(audio_tensor1, aud2, sr, sr2 )
+            (avg1, sr) = self.average_audio_tensors(avg1, aud2, sr, sr2 )
         
         if audio3 is not None :
             sr3 =audio3["sample_rate"]
-            aud2 =  self.adjustVolume(audio3["waveform"], audio3_volume)
-            (avg1, sr) = self.average_audio_tensors(avg1, audio3["waveform"], sr, sr3 )
+            aud3 =  self.adjustVolume(audio3["waveform"], audio3_volume)
+            (avg1, sr) = self.average_audio_tensors(avg1, aud3, sr, sr3 )
     
         audio = {
            "waveform": avg1,
