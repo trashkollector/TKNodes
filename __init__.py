@@ -4,6 +4,7 @@ NODE_CLASS_MAPPINGS = {
     "TKPromptEnhanced": tknodes.TKPromptEnhanced,
     "TKVideoUserInputs": tknodes.TKVideoUserInputs,
     "TKSamplerUserInputs": tknodes.TKSamplerUserInputs,
+    "TKVideoAudioFuse": tknodes.TKVideoAudioFuse,
 }
 
 
@@ -12,6 +13,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptEnhanced": "Enhanced Prompt (Cam)",
      "TKVideoUserInputs": "Video User Inputs",
      "TKSamplerUserInputs": "Sampler Inputs",
+     "TKVideoAudioFuse": "Video Audio Fuse",
 }
 
 WEB_DIRECTORY = "./js"
