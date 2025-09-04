@@ -16,6 +16,15 @@ common camera descriptives (so it saves you from typing too much)
 
 ![Alt text](assets/tkenhancedprompt.png)
 
+
+# TKVideoAudioFuse
+Fuse up to 3 audio streams and video together
+
+
+# TKAUdioFuse
+Fuse up to 3 audio streams together
+
+
 for manual install
 ---------------------
 https://github.com/trashkollector/TKNodes
