@@ -5,6 +5,7 @@ NODE_CLASS_MAPPINGS = {
     "TKVideoUserInputs": tknodes.TKVideoUserInputs,
     "TKSamplerUserInputs": tknodes.TKSamplerUserInputs,
     "TKVideoAudioFuse": tknodes.TKVideoAudioFuse,
+    "TKAudioFuse": tknodes.TKAudioFuse,
 }
 
 
@@ -14,9 +15,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKVideoUserInputs": "Video User Inputs",
      "TKSamplerUserInputs": "Sampler Inputs",
      "TKVideoAudioFuse": "Video Audio Fuse",
+     "TKAudioFuse": "Audio Fuse",
+
 }
 
 WEB_DIRECTORY = "./js"
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
-

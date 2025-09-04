@@ -104,13 +104,10 @@ class TKPromptEnhanced:
 
     RETURN_TYPES = ("STRING","STRING")
     RETURN_NAMES = ("positive","negative")
-
-
     FUNCTION = "tkpromptenhanced"
-
     #OUTPUT_NODE = False
-
     CATEGORY = "TKNodes"
+    DESCRIPTION = "Enhanced prompt, contains camera controls which are appended to the positive prompt"
 
     
     def tkpromptenhanced(self, positve_prompt, negative_prompt,use_cam_options, camera_shot_size, camera_angle, camera_focus, camera_movement, light):
@@ -152,6 +149,7 @@ class TKVideoUserInputs:
     RETURN_NAMES = ("video_width", "video_height", "total_frames","fps")
     FUNCTION = "main"
     CATEGORY = "TKNodes"
+    DESCRIPTION = "Common Video User Inputs-  Use the Length_Selector to determine if you want to select by frames or seconds"
 
     def main(self, width, height, total_frames, length_selector, fps, num_seconds, ):
      
@@ -188,14 +186,10 @@ class TKSamplerUserInputs :
         
 
     RETURN_TYPES = ("INT",  "FLOAT")
-    RETURN_NAMES = ("steps","cfg")
-
-
     FUNCTION = "tksamplerinputs"
-
     #OUTPUT_NODE = False
-
     CATEGORY = "TKNodes"
+    DESCRIPTION = "Common Sampler Inputs"
 
     
     def tksamplerinputs(self, steps, cfg ):
@@ -243,6 +237,7 @@ class TKVideoAudioFuse :
     #OUTPUT_NODE = False
 
     CATEGORY = "TKNodes"
+    DESCRIPTION = "Fuse/Overlayt up to 3 audio streams and 1 video together.  "
 
     
     def tkvideoaudiofuse(self, image, audio1,  audio1_volume,   audio2_volume,  audio3_volume, audio2=None, audio3=None, ):
@@ -302,9 +297,6 @@ class TKVideoAudioFuse :
             torch.Tensor: A new tensor representing the average of the two inputs, 
                           as a mono signal.
         """
-        print(audio1.shape)
-        print(audio2.shape)
-
         
         if not isinstance(audio1, torch.Tensor) or not isinstance(audio2, torch.Tensor):
             raise TypeError("Inputs must be PyTorch tensors.")
@@ -346,5 +338,61 @@ class TKVideoAudioFuse :
 
         return (averaged_audio, target_sr)
 
+
+class TKAudioFuse :
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+
+        return {
+            "required": {
+                "audio1": ("AUDIO",),  
+                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                
+                "audio2": ("AUDIO",),    
+                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),   
+            },
+            "optional": {
+                "audio3": ("AUDIO",),    
+                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
+            }
+        }
+        
+    RETURN_TYPES = ("AUDIO",)
+    FUNCTION = "tkaudiofuse"
+    #OUTPUT_NODE = False
+    CATEGORY = "TKNodes"
+    DESCRIPTION = "Fuse/Overlay up to 3 audio streams together"
+
+    
+    def tkaudiofuse(self, audio1,  audio1_volume,   audio2 , audio2_volume,  audio3_volume,  audio3 =None, ):
+       
+        vidaud_obj = TKVideoAudioFuse()
+        
+
+        audio_tensor1 = audio1['waveform']      
+        sr = audio1["sample_rate"]
+        avg1 = vidaud_obj.adjustVolume(audio_tensor1, audio1_volume)
+        
+ 
+        if  audio2 is not None :
+            sr2 =audio2["sample_rate"]
+            aud2 =  vidaud_obj.adjustVolume(audio2["waveform"], audio2_volume)
+            (avg1, sr) = vidaud_obj.average_audio_tensors(avg1, aud2, sr, sr2 )
+        
+        if audio3 is not None :
+            sr3 =audio3["sample_rate"]
+            aud3 =  vidaud_obj.adjustVolume(audio3["waveform"], audio3_volume)
+            (avg1, sr) = vidaud_obj.average_audio_tensors(avg1, aud3, sr, sr3 )
+            
+        print(avg1.shape )
+        audio = {
+           "waveform": avg1,
+           "sample_rate": sr,
+        }
+     
+        return (audio,)
+        
 
    
