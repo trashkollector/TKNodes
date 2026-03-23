@@ -4,9 +4,9 @@ import { createModuleLogger } from "./utils/LoggerUtils.js";
 
 
 // Initialize logger for this module
-const log = createModuleLogger('TKVideoUserInputs');
+const log = createModuleLogger('TKPhotoUserInputs');
 
-class TKVideoUserInputsCanvas {
+class TKPhotoUserInputs {
     constructor(node) {
         this.node = node;
         
@@ -98,14 +98,14 @@ class TKVideoUserInputsCanvas {
     initializeProperties() {
         const defaultProperties = {
             mode: "Manual",
-            valueX: 1280,
-            valueY: 1280,
+            valueX: 3000,
+            valueY: 3000,
             canvas_min_x: 200,
-            canvas_max_x: 1280,
-            canvas_step_x: 32,
+            canvas_max_x: 3000,
+            canvas_step_x: 64,
             canvas_min_y: 200,
-            canvas_max_y: 1280,
-            canvas_step_y: 32,
+            canvas_max_y: 3000,
+            canvas_step_y: 64,
             canvas_decimals_x: 0,
             canvas_decimals_y: 0,
             canvas_snap: true,
@@ -168,10 +168,7 @@ class TKVideoUserInputsCanvas {
         // Get widgets
         const widthWidget = node.widgets?.find(w => w.name === 'width');
         const heightWidget = node.widgets?.find(w => w.name === 'height');
-        const fpsWidget = node.widgets?.find(w => w.name === 'fps');
-		const selectorWidget = node.widgets?.find(w => w.name === 'length_selector');
-	    const totFramesWidget = node.widgets?.find(w => w.name === 'total_frames');
-		const numSecsWidget = node.widgets?.find(w => w.name === 'num_seconds');
+     
         const rescaleValueWidget = node.widgets?.find(w => w.name === 'rescale_value');
         
 
@@ -194,10 +191,7 @@ class TKVideoUserInputsCanvas {
         // Store widget references
         this.widthWidget = widthWidget;
         this.heightWidget = heightWidget;
-		this.fpsWidget = fpsWidget;
-		this.selectorWidget = selectorWidget;
-		this.totFramesWidget = totFramesWidget;
-		this.numSecsWidget = numSecsWidget;
+
         		
 		
  
@@ -384,7 +378,7 @@ class TKVideoUserInputsCanvas {
 
             ctx.font = "11px Arial";
             ctx.fillStyle = "rgba(200, 200, 200, 0.8)";
-            ctx.fillText("video_width", node.size[0] - 20, y_offset_1);
+            ctx.fillText("photo_width", node.size[0] - 20, y_offset_1);
             
             // Height value area
             this.controls.heightValueArea = {
@@ -406,9 +400,8 @@ class TKVideoUserInputsCanvas {
             }
           
 		    ctx.fillStyle = "rgba(200, 200, 200, 0.8)";
-            ctx.fillText("video_height", node.size[0] - 20, y_offset_2);
-            ctx.fillText("total_frames", node.size[0] - 20, y_offset_3);
-			ctx.fillText("fps", node.size[0] - 20, y_offset_4);
+            ctx.fillText("photo_height", node.size[0] - 20, y_offset_2);
+
 
         }
 		else {
@@ -499,27 +492,17 @@ class TKVideoUserInputsCanvas {
         if (this.widthWidget && this.heightWidget) {
             const width = this.widthWidget.value;
             const height = this.heightWidget.value;
-			const fps = this.fpsWidget.value;
-			const secs = this.numSecsWidget.value;
-			const nframes = this.totFramesWidget.value;
-			const sele = this.selectorWidget.value;
+
             const mp = ((width * height) / 1000000).toFixed(2);
             const aspectRatio = (width / height).toFixed(2);
             const pResolution = this.getClosestPResolution(width, height);
-			const calcSecs = (nframes / fps).toFixed(1);
-			const calcFrames = (fps * secs).toFixed(0);
-            
-			console.log(sele);
+
+
             ctx.fillStyle = "#bbb";
             ctx.font = "12px Arial";
             ctx.textAlign = "center";
             ctx.fillText(`${width} × ${height}  `,        node.size[0] / 2, y+15);
-			if (sele == "Use # Frames") {
-				ctx.fillText(`FRAMES:${nframes}   FPS:${fps}   DUR:${calcSecs}  `,        node.size[0] / 2, y);
-			}
-			else {
-				ctx.fillText(`FRAMES:${calcFrames}   FPS:${fps}   DUR:${secs}  `,        node.size[0] / 2, y);
-			}
+		
 			
         }
     }
@@ -744,11 +727,7 @@ class TKVideoUserInputsCanvas {
     validateWidgets() {
         return this.widthWidget && this.heightWidget;
     }
-    updateRescaleValue() {
-    console.log("Rescale called, but logic is missing!");
-    // You can add logic here later to handle zooming/scaling if needed
-    }
-
+    
     setDimensions(width, height) {
         if (!this.validateWidgets()) return;
         
@@ -795,7 +774,10 @@ class TKVideoUserInputsCanvas {
         // Wymuś przerysowanie canvas
         app.graph.setDirtyCanvas(true);
     }
-    
+    updateRescaleValue() {
+    console.log("Rescale called, but logic is missing!");
+    // You can add logic here later to handle zooming/scaling if needed
+    }
     setCanvasTextStyle(ctx, style = {}) {
         const defaults = {
             fillStyle: "#ccc",
@@ -1265,11 +1247,11 @@ class TKVideoUserInputsCanvas {
 
 
 app.registerExtension({
-    name: "extTKVideoUserInputs",
+    name: "extTKPhotoUserInputs",
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
         // 1. Define which nodes should trigger this behavior
         const nodeMappings = {
-            "TKVideoUserInputs": "tkvideouserinputs",
+            "TKPhotoUserInputs": "tkphotouserinputs"
             // "NewNodeName": "newProperty" <-- Easy to add more here!
         };
 
@@ -1282,7 +1264,7 @@ app.registerExtension({
                 onNodeCreated?.apply(this, []);
                 
                 // Dynamically assign the canvas instance
-                this[propertyName] = new TKVideoUserInputsCanvas(this);
+                this[propertyName] = new TKPhotoUserInputs(this);
             };
         }
     }

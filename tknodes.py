@@ -2,11 +2,108 @@ import nodes
 import torch
 import torch.nn.functional as F
 import torchaudio
-
+import random
+import math
 
 #  TK Collector -  Various Nodes for Comfy UI, TKPromptEnhanced
 #  August 10, 2025
 #  https://civitai.com/user/trashkollector175
+
+
+any_type = type("AnyType", (str,), {"__ne__": lambda self, o: False})
+ANY = any_type("*")
+
+
+class TKAudioUnwrap:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"audio": ("AUDIO",)}}
+
+    RETURN_TYPES = (ANY,)
+    RETURN_NAMES = ("waveform",)
+    FUNCTION = "unwrap"
+    CATEGORY = "audio"
+
+    def unwrap(self, audio):
+        return (audio["waveform"],)
+
+
+class TKPrintValueToLog:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value": (ANY,),
+                "label": ("STRING", {"default": "debug"}),
+            }
+        }
+
+    RETURN_TYPES = (ANY,)
+    RETURN_NAMES = ("value",)
+    OUTPUT_NODE = True
+    FUNCTION = "log"
+    CATEGORY = "debug"
+
+    def log(self, value, label):
+        print(f"[DEBUG] {label}: {value}")
+        return (value,)
+
+
+
+class TKCalcAudioChunks:
+    """
+    Splits audio into equal chunks, each as large as possible up to 15 seconds.
+
+    Examples:
+      10s -> 1 chunk of 10s
+      20s -> 2 chunks of 10s
+      26s -> 2 chunks of 13s
+      60s -> 4 chunks of 15s
+
+    Wire:
+      audio          -> from Get_audio / Load Audio
+      index          -> from For Loop Start (index)
+
+    Outputs:
+      num_chunks     -> For Loop Start (total)
+      chunk_size     -> Trim Audio Duration (duration)
+      start_time     -> Trim Audio Duration (start_index)
+      total_duration -> optional / debug
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "index": ("INT", {"default": 0}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "FLOAT", "FLOAT", "FLOAT")
+    RETURN_NAMES = ("num_chunks", "chunk_size", "start_time", "total_duration")
+    FUNCTION = "calc"
+    CATEGORY = "audio"
+
+    def calc(self, audio, index):
+        waveform = audio["waveform"]
+        sample_rate = audio["sample_rate"]
+
+        num_samples = waveform.shape[-1]
+        total_duration = num_samples / sample_rate
+
+        if total_duration <= 15:
+            num_chunks = 1
+            chunk_size = total_duration
+        else:
+            num_chunks = math.ceil(total_duration / 15)
+            chunk_size = total_duration / num_chunks
+        start_time = index * chunk_size
+
+        print(f"[CalcAudioChunks] total={total_duration:.2f}s  chunks={num_chunks}  chunk_size={chunk_size:.2f}s  start={start_time:.2f}s")
+
+        return (num_chunks, chunk_size, start_time, total_duration)
+
     
 class TKPromptEnhanced:
 
@@ -161,43 +258,63 @@ class TKVideoUserInputs:
 
 
 
-
-
-    
-class TKSamplerUserInputs :
+class TKVideoUserInputsBasic:
     def __init__(self):
         pass
-
+    
     @classmethod
     def INPUT_TYPES(s):
-
         return {
             "required": {
-            
-                "steps": ("INT", {
-                    "default": "10", "min": 1, "max": 200,
-                    "lazy": True  }),      
-                "cfg":  ("FLOAT", {
-                    "default": "1.0", "min": 0, "max": 100,
-                    "lazy": True   }),                  
-            
-                }
-            }
-        
+                "width":  ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
+                "height": ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
+               
+               },
+        }
 
-    RETURN_TYPES = ("INT",  "FLOAT")
-    FUNCTION = "tksamplerinputs"
-    #OUTPUT_NODE = False
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("video_width", "video_height")
+    FUNCTION = "main"
     CATEGORY = "TKNodes"
-    DESCRIPTION = "Common Sampler Inputs"
+    DESCRIPTION = "Common Video User Inputs- Basic"
+
+    def main(self, width, height ):
+     
+        
+        return (width, height )
+
+
+
+
+class TKPhotoUserInputs:
+    def __init__(self):
+        pass
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "width":  ("INT", {"default": 3000, "min": 100, "max": 3000, "step": 64}),
+                "height": ("INT", {"default": 3000, "min": 100, "max": 3000, "step": 64}),
+               
+               },
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("photo_width", "photo_height")
+    FUNCTION = "main"
+    CATEGORY = "TKNodes"
+    DESCRIPTION = "Photo User Inputs"
+
+    def main(self, width, height ):
+     
+        
+        return (width, height )
+
+
 
     
-    def tksamplerinputs(self, steps, cfg ):
-            
-            
-            
-        return ( steps, cfg)
-        
+       
         
         
 class TKVideoAudioFuse :
