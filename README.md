@@ -8,6 +8,8 @@ Everything is grouped together for tidy workflow.
 
 ![Alt text](assets/tkvideouserinputs.png)
 
+#TKPhotoUserInputs
+Larger grid 3000 x 3000 , useful for selecting image size
 
 # TKEnhancedPrompt - 
 Node that contains positive/negative prompt +                   
