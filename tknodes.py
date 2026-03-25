@@ -4,6 +4,10 @@ import torch.nn.functional as F
 import torchaudio
 import random
 import math
+import torch
+from pydub import AudioSegment
+from pydub.silence import detect_silence
+import numpy as np
 
 #  TK Collector -  Various Nodes for Comfy UI, TKPromptEnhanced
 #  August 10, 2025
@@ -13,6 +17,90 @@ import math
 any_type = type("AnyType", (str,), {"__ne__": lambda self, o: False})
 ANY = any_type("*")
 
+
+
+# --- PRIVATE INTERNAL FUNCTION (Hidden from ComfyUI) ---
+def _get_private_splits_from_audio(audio_data, chunk_size, variation):
+    # 1. Extract data from the ComfyUI Audio dictionary
+    waveform = audio_data['waveform']      # Shape: [Batch, Channels, Samples]
+    sample_rate = audio_data['sample_rate']
+    
+    # 2. Convert PyTorch tensor to raw bytes for pydub
+    # We flatten all channels into a single mono stream for silence detection
+    if waveform.dim() > 2:
+        waveform = waveform.mean(dim=1) # Convert to mono
+    
+    # Scale float32 (-1.0 to 1.0) to int16 for pydub compatibility
+    audio_np = (waveform.cpu().numpy() * 32767).astype(np.int16)
+    raw_data = audio_np.tobytes()
+    
+    # 3. Create pydub AudioSegment from raw bytes
+    audio = AudioSegment(
+        data=raw_data,
+        sample_width=2, # 16-bit (2 bytes)
+        frame_rate=sample_rate,
+        channels=1
+    )
+    
+    # 4. Same splitting logic as before
+    total_ms = len(audio)
+    target, var = chunk_size * 1000, variation * 1000
+    splits, curr = [0], 0
+    
+    while curr + (target - var) < total_ms:
+        win_start = curr + (target - var)
+        win_end = min(curr + (target + var), total_ms)
+        window = audio[win_start:win_end]
+        
+        silence = detect_silence(window, min_silence_len=300, silence_thresh=-40)
+        if silence:
+            s_start, s_end = silence[0]
+            split_at = win_start + s_start + (s_end - s_start) // 2
+        else:
+            split_at = curr + target
+            
+        splits.append(split_at)
+        curr = split_at
+        
+    splits.append(total_ms)
+    return splits
+    
+    
+# --- THE COMFYUI NODE ---
+class TKSmartAudioChunker:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "audio": ("AUDIO",), # Connect the gray wire here
+                "index": ("INT", {"default": 0}),
+                "chunk_secs": ("INT", {"default": 10}),
+                "variation": ("INT", {"default": 2}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "FLOAT", "FLOAT", "FLOAT")
+    RETURN_NAMES = ("num_chunks", "chunk_size", "start_time", "total_duration")
+    FUNCTION = "calculate"
+    CATEGORY = "HandyNodes-KT"
+
+    def calculate(self, audio, index, chunk_secs, variation):
+        # Run the private logic using the audio wire data
+        splits = _get_private_splits_from_audio(audio, chunk_secs, variation)
+        
+        num_chunks = len(splits) - 1
+        idx = max(0, min(index, num_chunks - 1))
+        
+        start_ms = splits[idx]
+        end_ms = splits[idx + 1]
+        
+        return (
+            num_chunks, 
+            float(end_ms - start_ms) / 1000.0, # chunk_size
+            float(start_ms) / 1000.0,          # start_time
+            float(splits[-1]) / 1000.0         # total_duration
+        )
+        
 
 class TKAudioUnwrap:
     @classmethod
@@ -47,6 +135,109 @@ class TKPrintValueToLog:
     def log(self, value, label):
         print(f"[DEBUG] {label}: {value}")
         return (value,)
+
+
+class TKMergeAudioList:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"audio_list": ("AUDIO",)}}
+    
+    # This is essential: it collects all clips into one list instead of looping the node
+    INPUT_IS_LIST = True 
+    RETURN_TYPES = ("AUDIO",)
+    FUNCTION = "merge"
+    CATEGORY = "HandyNodes-KT"
+
+    def merge(self, audio_list):
+        waveforms = [item['waveform'] for item in audio_list]
+        sample_rate = audio_list[0]['sample_rate']
+        
+        # 1. Create a tiny fade (0.1 seconds) to hide the 'pop'
+        fade_len = int(sample_rate * 0.1) 
+        fade_in = torch.linspace(0.0, 1.0, fade_len)
+        fade_out = torch.linspace(1.0, 0.0, fade_len)
+
+
+        # 2. Process the list to apply fades to the joins
+        merged_waveform = waveforms[0]
+        for i in range(1, len(waveforms)):
+            current_clip = waveforms[i]
+            
+            # --- SAFETY CHECK ADDED HERE ---
+            # Ensure fade_len is not longer than the available audio in either clip
+            actual_fade = min(fade_len, merged_waveform.shape[-1], current_clip.shape[-1])
+            
+            # If the clips are too short, adjust the fade tensors to match the actual_fade size
+            current_fade_out = fade_out[:actual_fade] if actual_fade < fade_len else fade_out
+            current_fade_in = fade_in[:actual_fade] if actual_fade < fade_len else fade_in
+            # -------------------------------
+
+            # Apply fades using the safe 'actual_fade' size
+            merged_waveform[:, :, -actual_fade:] *= current_fade_out
+            current_clip[:, :, :actual_fade] *= current_fade_in
+                    
+            merged_waveform = torch.cat([merged_waveform, current_clip], dim=-1)
+            
+
+        # 3. Flatten to Batch 1 as we did before
+        if merged_waveform.shape[0] > 1:
+            merged_waveform = merged_waveform.reshape(1, merged_waveform.shape[1], -1)
+
+        return ({"waveform": merged_waveform, "sample_rate": sample_rate},)
+
+
+# Remember to include your NODE_CLASS_MAPPINGS at the bottom of your file!
+
+
+class TKGenerateAudioSplits:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "audio_path": ("STRING", {"default": ""}),
+                "chunk_size_secs": ("INT", {"default": 10, "min": 5, "max": 60}),
+                "variation_secs": ("INT", {"default": 2, "min": 0, "max": 5}),
+                "silence_thresh": ("INT", {"default": -40, "min": -100, "max": 0}),
+            }
+        }
+
+    RETURN_TYPES = ("LIST", "INT")
+    RETURN_NAMES = ("splits", "num_chunks")
+    FUNCTION = "generate"
+    CATEGORY = "HandyNodes-KT"
+
+    def generate(self, audio_path, chunk_size_secs, variation_secs, silence_thresh):
+        audio = AudioSegment.from_file(audio_path)
+        total_ms = len(audio)
+        
+        target_ms = chunk_size_secs * 1000
+        var_ms = variation_secs * 1000
+        
+        splits = [0] # Start at 0ms
+        current_pos = 0
+        
+        while current_pos + (target_ms - var_ms) < total_ms:
+            # Search Window: e.g., 8s to 12s
+            search_start = current_pos + (target_ms - var_ms)
+            search_end = min(current_pos + (target_ms + var_ms), total_ms)
+            
+            window = audio[search_start:search_end]
+            silences = detect_silence(window, min_silence_len=300, silence_thresh=silence_thresh)
+            
+            if silences:
+                # Split in middle of found silence
+                s_start, s_end = silences[0]
+                split_at = search_start + s_start + (s_end - s_start) // 2
+            else:
+                # Force cut at target if no silence found
+                split_at = current_pos + target_ms
+                
+            splits.append(split_at)
+            current_pos = split_at
+            
+        splits.append(total_ms)
+        print(f"[TK DEBUG] Generated {len(splits)-1} splits: {splits}")
+        return (splits, len(splits) - 1)
 
 
 class TKCalcAudioChunks:

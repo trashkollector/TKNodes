@@ -7,7 +7,9 @@ NODE_CLASS_MAPPINGS = {
     "TKVideoUserInputsBasic": tknodes.TKVideoUserInputsBasic,
     "TKVideoAudioFuse": tknodes.TKVideoAudioFuse,
     "TKAudioFuse": tknodes.TKAudioFuse,
+    "TKMergeAudioList": tknodes.TKMergeAudioList,
     "TKAudioUnwrap": tknodes.TKAudioUnwrap,
+    "TKSmartAudioChunker": tknodes.TKSmartAudioChunker,
     "TKPrintValueToLog": tknodes.TKPrintValueToLog,
     "TKCalcAudioChunks": tknodes.TKCalcAudioChunks,}
 
@@ -16,13 +18,15 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptEnhanced": "Enhanced Prompt (Cam)",
      "TKVideoUserInputs": "Video User Inputs",
-     "TKPhotoUserInputs": "Visual Photo Sizer",
+     "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
-     "TKVideoAudioFuse": "Merge Video and multiple Audio tracks",
-     "TKAudioFuse": "Merge multiple Audio tracks together",
-     "TKAudioUnwrap": "Extract Waveform from Audio",
-     "TKPrintValueToLog": "Write to Comfy Log",
-     "TKCalcAudioChunks": "Chunkify long audio",
+     "TKVideoAudioFuse": "Video Audio Fuse",
+     "TKAudioFuse": "Audio Fuse",
+     "TKMergeAudioList": "Merge audio list",
+     "TKSmartAudioChunker": "Smart Audio Chunker",
+     "TKAudioUnwrap": "Audio → Waveform Tensor",
+     "TKPrintValueToLog": "Print Value to log",
+     "TKCalcAudioChunks": "Calc Audio Chunks",
 
 
 }
