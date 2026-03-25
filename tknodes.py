@@ -49,7 +49,6 @@ class TKPrintValueToLog:
         return (value,)
 
 
-
 class TKCalcAudioChunks:
     """
     Splits audio into equal chunks, each as large as possible up to 15 seconds.
@@ -77,7 +76,11 @@ class TKCalcAudioChunks:
             "required": {
                 "audio": ("AUDIO",),
                 "index": ("INT", {"default": 0}),
+            },
+            "optional": {
+                "chunk_secs": ("INT", {"default": 12}),
             }
+            
         }
 
     RETURN_TYPES = ("INT", "FLOAT", "FLOAT", "FLOAT")
@@ -85,18 +88,18 @@ class TKCalcAudioChunks:
     FUNCTION = "calc"
     CATEGORY = "audio"
 
-    def calc(self, audio, index):
+    def calc(self, audio, index, chunk_secs):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
 
         num_samples = waveform.shape[-1]
         total_duration = num_samples / sample_rate
 
-        if total_duration <= 15:
+        if total_duration <= chunk_secs:
             num_chunks = 1
             chunk_size = total_duration
         else:
-            num_chunks = math.ceil(total_duration / 15)
+            num_chunks = math.ceil(total_duration / chunk_secs)
             chunk_size = total_duration / num_chunks
         start_time = index * chunk_size
 
