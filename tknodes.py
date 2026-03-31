@@ -65,10 +65,25 @@ class TKSpeakerAudioTrackExtractor:
         
         # Bounds checking to prevent index errors
         max_samples = waveform.shape[-1]
+        max_duration = max_samples / sample_rate
+
+        # ✅ Validate before slicing
+        if start_time >= max_duration:
+            raise ValueError(f"INDEX {index}: ERROR  start_time {start_time:.2f}s exceeds audio length {max_duration:.2f}s")
+        if end_time > max_duration:
+            raise ValueError(f"INDEX {index}: ERROR end_time {end_time:.2f}s exceeds audio length {max_duration:.2f}s — ERROR - Make sure you entered correct Speaker Times!")
+
+
         start_idx = max(0, min(start_sample, max_samples))
         end_idx = max(0, min(end_sample, max_samples))
 
    
+        print(f"sample_rate={sample_rate}")
+        print(f"waveform.shape={waveform.shape}")
+        print(f"max_samples={max_samples}")
+        print(f"start_sample={start_sample}, end_sample={end_sample}")
+        print(f"start_idx={start_idx}, end_idx={end_idx}")
+
         # pad with 0.5 of leading silence and 0.3 of trailing silence
         if (padAudioForLtx):
             # --- 1. Silence durations (in seconds → samples) ---
@@ -165,7 +180,7 @@ class TKSpeakerAudioTrackExtractor:
         
         for i, (start, end, speaker) in enumerate(all_tracks, 1):
             # Debug Print
-            print(f" Merge and Sort {i : <5} | {speaker : <10} | {start : <10} | {end : <10}")
+            print(f" {i : <5} | {speaker : <10} | {start : <10} | {end : <10}")
             
             # Append to result list
             final_values.extend([str(start), str(end), speaker])
