@@ -7,11 +7,14 @@ NODE_CLASS_MAPPINGS = {
     "TKVideoUserInputsBasic": tknodes.TKVideoUserInputsBasic,
     "TKVideoAudioFuse": tknodes.TKVideoAudioFuse,
     "TKAudioFuse": tknodes.TKAudioFuse,
-    "TKMergeAudioList": tknodes.TKMergeAudioList,
     "TKAudioUnwrap": tknodes.TKAudioUnwrap,
     "TKSmartAudioChunker": tknodes.TKSmartAudioChunker,
     "TKPrintValueToLog": tknodes.TKPrintValueToLog,
-    "TKCalcAudioChunks": tknodes.TKCalcAudioChunks,}
+    "TKMergeAudioList": tknodes.TKMergeAudioList,
+    "TKSpeakerAudioTrackExtractor" : tknodes.TKSpeakerAudioTrackExtractor,\
+    "TKTotalTracksInAudio" : tknodes.TKTotalTracksInAudio,
+    "TKSpeakerDataFromTrack" : tknodes.TKSpeakerDataFromTrack,
+    "TKAudioSpeakerTalkTime": tknodes.TKAudioSpeakerTalkTime,}
 
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -21,12 +24,15 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
      "TKVideoAudioFuse": "Video Audio Fuse",
-     "TKAudioFuse": "Audio Fuse",
-     "TKMergeAudioList": "Merge audio list",
+     "TKAudioFuse": "Audio Merge/Fuse",
      "TKSmartAudioChunker": "Smart Audio Chunker",
      "TKAudioUnwrap": "Audio → Waveform Tensor",
      "TKPrintValueToLog": "Print Value to log",
-     "TKCalcAudioChunks": "Calc Audio Chunks",
+     "TKSpeakerAudioTrackExtractor": "Extract nTh Audio track",
+     "TKMergeAudioList": "Merge audio list to 1 audio",
+     "TKTotalTracksInAudio": "User supplied tracks",
+     "TKSpeakerDataFromTrack" : "Get a Track details from Track",
+     "TKAudioSpeakerTalkTime": "Speaker Talk Times",
 
 
 }
