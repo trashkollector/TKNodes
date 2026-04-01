@@ -73,7 +73,7 @@ class TKSpeakerAudioTrackExtractor:
         if end_time > max_duration:
             raise ValueError(f"INDEX {index}: ERROR end_time {end_time:.2f}s exceeds audio length {max_duration:.2f}s — ERROR - Make sure you entered correct Speaker Times!")
 
-
+        
         start_idx = max(0, min(start_sample, max_samples))
         end_idx = max(0, min(end_sample, max_samples))
 
@@ -142,7 +142,10 @@ class TKSpeakerAudioTrackExtractor:
             f"new_waveform={new_waveform.shape[-1]} samples | "
             f"final_waveform={final_waveform.shape[-1]} samples")
 
-        totalTracks = self.getTotalTracks(combinedTrackInfo)
+        totalTracks, last_time_stamp = self.getTotalTracks(combinedTrackInfo)
+        if (last_time_stamp >= max_duration):
+           raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {max_duration:.2f} seconds")
+
         nFrames = int(round((end_time - start_time) * 25)+25)
 
 
@@ -198,33 +201,48 @@ class TKSpeakerAudioTrackExtractor:
             combined_string = combined_string[0]
 
         if not combined_string or not str(combined_string).strip():
-            return 0
+            return 0, 0.0
             
         parts = str(combined_string).split(",")
         num_parts = len(parts)
         total_populated = 0
-        last_end_time = -1.0 
+        max_end_time = 0.0 
         
-        for i in range(0, num_parts - 1, 3):  # ai change
+        # Step through in chunks of 3 (start, end, label)
+        for i in range(0, num_parts - 2, 3):
             try:
-                start = float(parts[i].strip())
-                end = float(parts[i+1].strip())
-                # parts[i+2] is the speaker label, which we skip here
+                start_val = parts[i].strip()
+                end_val = parts[i+1].strip()
                 
-                if (start == 0.0 and end == 0.0):
-                    break
-                if (start >= end):
-                    break
-                if (start < last_end_time):
-                    break
-                
-                total_populated += 1
-                last_end_time = end
-                
-            except (IndexError, ValueError, AttributeError):
-                break
+                # Basic string check to ensure we have numbers
+                if not start_val or not end_val:
+                    continue
+                    
+                start = float(start_val)
+                end = float(end_val)
 
-        return int(total_populated)
+                # 1. Check for 'Empty/Padding' tracks (0,0)
+                # If we hit 0,0, we assume the data ends here and stop counting
+                if start == 0.0 and end == 0.0:
+                    break 
+
+                # 2. STRICT VALIDATION: If data exists but is nonsensical, 
+                # return 0 for everything to block further processing.
+                if start < 0 or end < 0 or start >= end:
+                    print(f"CRITICAL ERROR: Invalid timestamps found (Start: {start}, End: {end})")
+                    return 0, 0.0
+
+                # 3. Track valid data
+                total_populated += 1
+                if end > max_end_time:
+                    max_end_time = end
+                
+            except (ValueError, IndexError):
+                print(f"CRITICAL ERROR: Non-numeric track data at index {i}")
+                return 0, 0.0
+
+        return int(total_populated), float(max_end_time)
+
 
 
 
@@ -288,7 +306,7 @@ class TKTotalTracksInAudio:
         merged = extractor.mergeAndSortTracks(combinedTrackInfo1, combinedTrackInfo2)
         
         # 2. Get the total count
-        total = extractor.getTotalTracks(merged)
+        total, last_end_time = extractor.getTotalTracks(merged)
         
         return (int(total),)
 
