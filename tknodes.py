@@ -711,27 +711,33 @@ class TKVideoUserInputs:
                 "width":  ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
                 "height": ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
                 "length_selector": (
-                    ["Use # Frames", "Use # Seconds"],
-                ),
-                "total_frames": ("INT", {"default": 81,   "min": 32, "max": 1000, "description" : "This value applies when length_selector = Use Frames"}),
+                                ["Use # Seconds", "Use # Frames"], # "Use # Seconds" is now the default
+                                {"default": "Use # Seconds"}       # Explicitly defining the default
+                            ),
+                "total_frames": ("INT", {"default": 97,   "min": 10, "max": 1000, "description" : "This value applies when length_selector = Use Frames"}),
                 "num_seconds": ("FLOAT", {"default": 5.0, "min": 2.0, "max": 1000, "description" : "This value applies when length_selector = Use Seconds"}),
-                "fps":         ("FLOAT", {"default": 16.0, "min": 16.0, "max": 60.0, "description" : "FPS from video info node"}),
+                "fps":         ("FLOAT", {"default": 24.0, "min": 16.0, "max": 60.0, "description" : "FPS from video info node"}),
                 
 
             },
         }
 
-    RETURN_TYPES = ("INT", "INT","INT","FLOAT")
-    RETURN_NAMES = ("video_width", "video_height", "total_frames","fps")
+    RETURN_TYPES = ("INT",              "INT",         "INT",    "FLOAT", "FLOAT")
+    RETURN_NAMES = ("video_width", "video_height", "total_frames","fps", "totalSeconds")
     FUNCTION = "main"
     CATEGORY = "TKNodes"
     DESCRIPTION = "Common Video User Inputs-  Use the Length_Selector to determine if you want to select by frames or seconds"
 
     def main(self, width, height, total_frames, length_selector, fps, num_seconds, ):
      
+        returnSecs = num_seconds
         if (length_selector=="Use # Seconds") :
             total_frames = int(fps * num_seconds)
-        return (width, height, total_frames, fps )
+        else :
+            returnSecs =   float(total_frames) / fps;
+        
+
+        return (width, height, total_frames, fps, returnSecs )
 
 
 
