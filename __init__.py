@@ -1,25 +1,29 @@
-from . import tknodes
+from . import tknodes, misc, speakers, audioChunker
 
 NODE_CLASS_MAPPINGS = {
     "TKPromptEnhanced": tknodes.TKPromptEnhanced,
     "TKVideoUserInputs": tknodes.TKVideoUserInputs,
     "TKPhotoUserInputs": tknodes.TKPhotoUserInputs,
     "TKVideoUserInputsBasic": tknodes.TKVideoUserInputsBasic,
-    "TKVideoAudioFuse": tknodes.TKVideoAudioFuse,
-    "TKAudioFuse": tknodes.TKAudioFuse,
-    "TKAudioUnwrap": tknodes.TKAudioUnwrap,
-    "TKSmartAudioChunker": tknodes.TKSmartAudioChunker,
-    "TKPrintValueToLog": tknodes.TKPrintValueToLog,
-    "TKMergeAudioList": tknodes.TKMergeAudioList,
-    "TKSpeakerAudioTrackExtractor" : tknodes.TKSpeakerAudioTrackExtractor,\
-    "TKTotalTracksInAudio" : tknodes.TKTotalTracksInAudio,
-    "TKSpeakerDataFromTrack" : tknodes.TKSpeakerDataFromTrack,
-    "TKAudioSpeakerTalkTime": tknodes.TKAudioSpeakerTalkTime,}
+    "TKVideoAudioFuse": misc.TKVideoAudioFuse,
+    "TKAudioFuse": misc.TKAudioFuse,
+    "TKAudioUnwrap": misc.TKAudioUnwrap,
+    "TKSmartAudioChunker": audioChunker.TKSmartAudioChunker,
+    "TKPrintValueToLog": misc.TKPrintValueToLog,
+    "TKMergeAudioList": misc.TKMergeAudioList,
+    "TKSpeakerAudioTrackExtractor" : speakers.TKSpeakerAudioTrackExtractor,
+    "TKTotalTracksInAudio" : speakers.TKTotalTracksInAudio,
+    "TKSpeakerDataFromTrack" : speakers.TKSpeakerDataFromTrack,
+    "TKTrimImageOverlap": audioChunker.TKTrimImageOverlap,
+    "TKCalcLTXFrames":    audioChunker.TKCalcLTXFrames,
+    "TKAudioSpeakerTalkTime": speakers.TKAudioSpeakerTalkTime,}
+
 
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptEnhanced": "Enhanced Prompt (Cam)",
+     "TKCalcLTXFrames":    "TK Calc LTX Frames",
      "TKVideoUserInputs": "Video User Inputs",
      "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
@@ -31,6 +35,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKSpeakerAudioTrackExtractor": "Extract nTh Audio track",
      "TKMergeAudioList": "Merge audio list to 1 audio",
      "TKTotalTracksInAudio": "User supplied tracks",
+     "TKTrimImageOverlap": "Trim images to remove overlap",
      "TKSpeakerDataFromTrack" : "Get a Track details from Track",
      "TKAudioSpeakerTalkTime": "Speaker Talk Times",
 
