@@ -59,14 +59,18 @@ def _get_private_splits_from_audio(audio_data, chunk_size, variation):
 
 # --- THE COMFYUI NODE ---
 class TKSmartAudioChunker:
+
+    DESCRIPTION = "Smart Audio Chunker is used to take an audio segment and split it up in chunks.  It searches for silence to split up the audio.  It also adds some silence to the chunks specifically for LTX"
+
+
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "audio": ("AUDIO",), # Connect the gray wire here
-                "index": ("INT", {"default": 0}),
-                "chunk_secs": ("INT", {"default": 10}),
-                "variation": ("INT", {"default": 2}),
+                "audio": ("AUDIO",{"tooltip":"the Full audio that will get chunked"}), # Connect the gray wire here
+                "index": ("INT", {"default": 0, "tooltip": "Index into audio chunks" }),
+                "chunk_secs": ("INT", {"default": 10, "tooltip": "Size of an Audio Chunk, for low VRAM use 5"}),
+                "variation": ("INT", {"default": 2, "tooltip": "we separate when we find silence, this tells how far back and forward to search for silence"}),
             },
         }
 
@@ -122,16 +126,19 @@ class TKTrimImageOverlap:
     Output:
         IMAGE batch with overlap frames removed
     """
+    # This is what ComfyUI looks for to display a node-level description
+    DESCRIPTION = "Trims overlap frames from video segments based on position in sequence."
+
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image":           ("IMAGE",),
-                "idx":             ("INT", {"default": 0, "min": 0, "max": 9999}),
-                "total_segments":  ("INT", {"default": 1, "min": 1, "max": 9999}),
-                "start_frames":    ("INT", {"default": 12, "min": 0, "max": 9999}),
-                "end_frames":      ("INT", {"default": 13, "min": 0, "max": 9999}),
+                "image":           ("IMAGE",{"tooltip":"the video needed because we need to trim from beginnning and end "}),
+                "idx":             ("INT", {"default": 0, "min": 0, "max": 9999, "tooltip": "Index for audio chunks"}),
+                "total_segments":  ("INT", {"default": 1, "min": 1, "max": 9999, "tooltip": "total audio chunks"}),
+                "start_frames":    ("INT", {"default": 12, "min": 0, "max": 9999, "tooltip": "start frame to remove"}),
+                "end_frames":      ("INT", {"default": 13, "min": 0, "max": 9999, "tooltip": "end framess to remove"}),
             }
         }
 
@@ -169,6 +176,8 @@ class TKTrimImageOverlap:
 
 
 class TKCalcLTXFrames:
+    DESCRIPTION = "Convert to LTX frame counts so trimming is perfectly accurate to avoid out of sync conditions."
+
     """
     Converts a bare chunk duration (NO overlap) to a valid LTX frame count,
     and computes the exact overlap needed so trimming is perfectly accurate.
@@ -199,8 +208,8 @@ class TKCalcLTXFrames:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "chunk_secs": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 9999.0, "step": 0.001}),
-                "fps":        ("INT",   {"default": 25,  "min": 1,    "max": 240}),
+                "chunk_secs": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 9999.0, "step": 0.001, "tooltip": "Seconds duration of audio chunk"}),
+                "fps":        ("INT",   {"default": 25,  "min": 1,    "max": 240, "tooltip": "Frame per sec -usually 25 "}),
             }
         }
 

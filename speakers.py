@@ -9,10 +9,13 @@ class TKSpeakerAudioTrackExtractor:
         return {
             "required": {
                 "fullaudio": ("AUDIO",),
-                "combinedTrackInfo1": ("STRING", {"forceInput": True}),
-                "combinedTrackInfo2": ("STRING", {"forceInput": True}),
-                "padAudioForLtx" : ("BOOLEAN", {"default": True}),
-                "index": ("INT", {"default": 1, "min": 1, "max": 10}),
+                "combinedTrackInfo1": ("STRING", {"forceInput": True , "tooltip": "Speaker 1 track info."}),
+                "combinedTrackInfo2": ("STRING", {"forceInput": True,  "tooltip": "Speaker 2 track info."}),
+                "padAudioForLtx" : ("BOOLEAN", {"default": True, "tooltip": "pad audio track with silence..helps lip sync."}),
+                "index": ("INT", {"default": 1, "min": 1, "max": 10, "tooltip": "the track number from ALL tracks"}),
+            },
+            "optional" :{
+                "addBreathNoise" : ("BOOLEAN", {"default": False, "tooltip": "This will add human breath to start of audio, turn this ON increases chances of lip sync working."}),
             }
         }
 
@@ -20,6 +23,7 @@ class TKSpeakerAudioTrackExtractor:
     RETURN_NAMES = ("audioTrack","totalTracks", "numFrames" , "speakerNum")
     FUNCTION = "extractSpeakerTrackAudio"
     CATEGORY = "TKNodes"
+    DESCRIPTION ="This node extracts all the track info enterd by the user  and then sorts them and combines them so it can subsequentally loop thru them in the workflow"
 
     def extractSpeakerTrackAudio(self, fullaudio, combinedTrackInfo1, combinedTrackInfo2, 
                                       index, padAudioForLtx):
@@ -246,6 +250,7 @@ class TKSpeakerDataFromTrack:
     RETURN_NAMES = ("selectedImage", "selectedText", "currentIndex")
     FUNCTION = "select_data"
     CATEGORY = "TKNodes"
+    DESCRIPTION ="Given the Speaker,, select the appropriate PROMPT and START IMAGE. since they alternate we need this"
 
     def select_data(self, trackIndex, speakerNum, image1, prompt1, image2, prompt2):
         # 1. Logic to pick based on the speakerNum provided by your extractor
@@ -268,7 +273,7 @@ class TKTotalTracksInAudio:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "combinedTrackInfo1": ("STRING", {"forceInput": True}),
+                "combinedTrackInfo1": ("STRING", {"forceInput": True, "tooltip":"Speaker 1 defined track times"}),
                 "combinedTrackInfo2": ("STRING", {"forceInput": True}),
             }
         }
@@ -277,6 +282,7 @@ class TKTotalTracksInAudio:
     RETURN_NAMES = ("totalTracks",)
     FUNCTION = "calculate_total"
     CATEGORY = "TKNodes"
+    DESCRIPTION = "Get the total talks tracks between the 2 Speakers"
 
     def calculate_total(self, combinedTrackInfo1, combinedTrackInfo2):
         # We use a temporary instance of your extractor to reuse the logic

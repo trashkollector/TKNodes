@@ -278,7 +278,7 @@ class TKVideoUserInputsBasicCanvas {
         const margin = 10;
         const spacing = 8;
         
-        let currentY = LiteGraph.NODE_TITLE_HEIGHT + 2 + 150;
+        let currentY = LiteGraph.NODE_TITLE_HEIGHT + 2 + 20;
         
         if (props.mode === "Manual") {
             // Clear controls at the start to avoid stale references

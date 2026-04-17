@@ -17,21 +17,21 @@ class TKVideoAudioFuse :
 
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE",{"tooltip":"the video part - so it can be merged with up to 3 audio streams"}),
                               
-                "audio1": ("AUDIO",),  
+                "audio1": ("AUDIO",{"tooltip":"1st Audio Stream - will be fused/merged with video, the images"}),  
             
-                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                
+                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10, "tooltip":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                
 
             },
         
             "optional": {
             
-                "audio2": ("AUDIO",),    
-                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
+                "audio2": ("AUDIO",{"tooltip":"2nd Audio Stream - will be fused/merged with video and all audio tracks"}),    
+                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10, "tooltip":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
 
-                "audio3": ("AUDIO",),    
-                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
+                "audio3": ("AUDIO",{"tooltip":"2nd Audio Stream - will be fused/merged with video and all audio tracks"}),    
+                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10, "tooltip":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
             }
         }
         
@@ -156,14 +156,14 @@ class TKAudioFuse :
 
         return {
             "required": {
-                "audio1": ("AUDIO",),  
-                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                
-                "audio2": ("AUDIO",),    
-                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),   
+                "audio1": ("AUDIO", {"tooltip":"Fuse or merge two to 3 audio streams together producing 1 final audio"}),  
+                "audio1_volume" : ("INT", {"default":0,"min":-10,"max":10, "tooltip":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                
+                "audio2": ("AUDIO",{"tooltip":"Fuse or merge two to 3 audio streams together producing 1 final audio"}),    
+                "audio2_volume" : ("INT", {"default":0,"min":-10,"max":10, "tooltip":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),   
             },
             "optional": {
                 "audio3": ("AUDIO",),    
-                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10, "description":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
+                "audio3_volume" : ("INT", {"default":0,"min":-10,"max":10, "tooltip":"Enter volume -10 lowest, 0 = normal, 10 = loudest"}),                    
             }
         }
         
@@ -202,7 +202,10 @@ class TKAudioFuse :
      
         return (audio,)
 
-# Unwrap an aundio return the waveform.        
+
+
+
+# Unwrap an audio return the waveform.        
 class TKAudioUnwrap:
     @classmethod
     def INPUT_TYPES(cls):
@@ -212,6 +215,8 @@ class TKAudioUnwrap:
     RETURN_NAMES = ("waveform",)
     FUNCTION = "unwrap"
     CATEGORY = "audio"
+    DESCRIPTION = "Unwrap an audio latent - return the waveform. "
+
 
     def unwrap(self, audio):
         return (audio["waveform"],)
@@ -222,8 +227,8 @@ class TKPrintValueToLog:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "value": (ANY,),
-                "label": ("STRING", {"default": "mylog"}),
+                "value": (ANY,{"tooltip" : "Value to be printed to comfyui.log"}),
+                "label": ("STRING", {"default": "mylog","tooltip": "Label for your log"}),
             }
         }
 
@@ -232,6 +237,8 @@ class TKPrintValueToLog:
     OUTPUT_NODE = True
     FUNCTION = "log"
     CATEGORY = "debug"
+    DESCRIPTION = "Print to Log - useful for debugging nodes "
+
 
     def log(self, value, label):
         print(f"[{label}] : {value}")
@@ -242,15 +249,21 @@ class TKPrintValueToLog:
 ## Takes a list of audio files and join them to create on stream
 ## Useful when concat a bunch of videos together with VHS Combile
 class TKMergeAudioList:
+    
     @classmethod
     def INPUT_TYPES(s):
-        return {"required": {"audio_list": ("AUDIO",)}}
+        return {
+            "required": {
+                "audio_list": ("AUDIO", {"tooltip" : "a list of audio to convert to 1 audio stream"})
+            }
+        }
     
     # This is essential: it collects all clips into one list instead of looping the node
     INPUT_IS_LIST = True 
     RETURN_TYPES = ("AUDIO",)
     FUNCTION = "merge"
     CATEGORY = "HandyNodes-KT"
+    DESCRIPTION = " Takes a list of audio files and join them to create on stream"
 
     def merge(self, audio_list):
         waveforms = [item['waveform'] for item in audio_list]
