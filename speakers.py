@@ -21,103 +21,103 @@ class TKSpeakerAudioTrackExtractor:
     FUNCTION = "extractSpeakerTrackAudio"
     CATEGORY = "TKNodes"
 
-    def extractSpeakerTrackAudio(self, fullaudio, combinedTrackInfo1, combinedTrackInfo2, index, padAudioForLtx):
+    def extractSpeakerTrackAudio(self, fullaudio, combinedTrackInfo1, combinedTrackInfo2, 
+                                      index, padAudioForLtx):
         # 1. Get the startTime and EndTime by calling the helper function
-
         combinedTrackInfo = self.mergeAndSortTracks(combinedTrackInfo1, combinedTrackInfo2)
-        start_time, end_time , speaker = getTrack(index, combinedTrackInfo)
+        start_time, end_time, speaker = getTrack(index, combinedTrackInfo)
 
-      
         print(f"INDEX {index}: start={start_time}, end={end_time}, duration={end_time-start_time:.2f}s")
 
-      
+        if (speaker == "speaker1"):
+            speakerNum = 1
+        elif (speaker == "speaker2"):
+            speakerNum = 2
+        else:
+            speakerNum = 0
 
-        if (speaker=="speaker1"):
-            speakerNum=1
-        elif (speaker=="speaker2"):
-            speakerNum=2
-        else: 
-            speakerNum=0
-
-        #  Extract the waveform and sample rate
-        waveform = fullaudio["waveform"] # shape: [batch, channels, samples]
+        # Extract the waveform and sample rate
+        waveform = fullaudio["waveform"]  # shape: [batch, channels, samples]
         sample_rate = fullaudio["sample_rate"]
-        
+
         # Calculate sample indices
         start_sample = int(start_time * sample_rate)
         end_sample = int(end_time * sample_rate)
-        
+
         # Bounds checking to prevent index errors
         max_samples = waveform.shape[-1]
         max_duration = max_samples / sample_rate
 
-        # ✅ Validate before slicing
+        # Validate before slicing
         if start_time >= max_duration:
-            raise ValueError(f"INDEX {index}: ERROR  start_time {start_time:.2f}s exceeds audio length {max_duration:.2f}s")
+            raise ValueError(f"INDEX {index}: ERROR start_time {start_time:.2f}s exceeds audio length {max_duration:.2f}s")
         if end_time > max_duration:
             raise ValueError(f"INDEX {index}: ERROR end_time {end_time:.2f}s exceeds audio length {max_duration:.2f}s — ERROR - Make sure you entered correct Speaker Times!")
 
-        
         start_idx = max(0, min(start_sample, max_samples))
         end_idx = max(0, min(end_sample, max_samples))
 
-   
         print(f"sample_rate={sample_rate}")
         print(f"waveform.shape={waveform.shape}")
         print(f"max_samples={max_samples}")
         print(f"start_sample={start_sample}, end_sample={end_sample}")
         print(f"start_idx={start_idx}, end_idx={end_idx}")
 
-        # pad with 0.5 of leading silence and 0.3 of trailing silence
+        # Helper: load the pad audio asset, resample if needed, and trim/tile to exact sample count
+        def load_pad_audio(target_samples, device, dtype):
+            import torchaudio
+            import os
+
+            asset_path = os.path.join(os.path.dirname(__file__), "assets", "breather.wav")
+            pad_waveform, pad_sr = torchaudio.load(asset_path, backend="soundfile")
+
+            if pad_sr != sample_rate:
+                resampler = torchaudio.transforms.Resample(orig_freq=pad_sr, new_freq=sample_rate)
+                pad_waveform = resampler(pad_waveform)
+
+            # Match channel count
+            target_channels = waveform.shape[1]
+            if pad_waveform.shape[0] < target_channels:
+                pad_waveform = pad_waveform.expand(target_channels, -1)
+            elif pad_waveform.shape[0] > target_channels:
+                pad_waveform = pad_waveform[:target_channels, :]
+
+            # Trim to exact target (handles any minor resampling rounding)
+            pad_waveform = pad_waveform[:, :target_samples]
+
+            return pad_waveform.unsqueeze(0).to(device=device, dtype=dtype)
+
+        # pad with leading and trailing asset audio
         if (padAudioForLtx):
-            # --- 1. Silence durations (in seconds → samples) ---
-            start_padding_samples = int(0.5 * sample_rate)
-            end_padding_samples   = int(0.3 * sample_rate)
+            import torchaudio
+            import os
 
-            if end_sample > max_samples:
-                # Amount of missing audio
-                missing = end_sample - max_samples
+            # Load breather once to get its exact sample count
+            asset_path = os.path.join(os.path.dirname(__file__), "assets", "breather.wav")
+            _breather, _breather_sr = torchaudio.load(asset_path, backend="soundfile")
+            if _breather_sr != sample_rate:
+                _breather = torchaudio.transforms.Resample(orig_freq=_breather_sr, new_freq=sample_rate)(_breather)
 
-                # Slice what exists
-                sliced = waveform[:, :, start_idx:max_samples]
+            # Match channel count
+            target_channels = waveform.shape[1]
+            if _breather.shape[0] < target_channels:
+                _breather = _breather.expand(target_channels, -1)
+            elif _breather.shape[0] > target_channels:
+                _breather = _breather[:target_channels, :]
 
-                # Pad the missing tail with silence
-                pad = torch.zeros(
-                    (waveform.shape[0], waveform.shape[1], missing),
-                    device=waveform.device,
-                    dtype=waveform.dtype
-                )
+            # Add batch dim [batch, channels, samples]
+            leading_pad = _breather.unsqueeze(0).to(device=waveform.device, dtype=waveform.dtype)
 
-                new_waveform = torch.cat([sliced, pad], dim=-1)
+            # Get speech waveform
+            new_waveform = waveform[:, :, start_idx:end_idx]
 
-            else:
-                new_waveform = waveform[:, :, start_idx:end_idx]
-              
+            # Prepend breath only
+            final_waveform = torch.cat([leading_pad, new_waveform], dim=-1)
 
-            # --- 3. Prepend + append silence ---
-            leading_silence = torch.zeros(
-                (new_waveform.shape[0], new_waveform.shape[1], start_padding_samples),
-                device=new_waveform.device,
-                dtype=new_waveform.dtype
-            )
-
-            trailing_silence = torch.zeros(
-                (new_waveform.shape[0], new_waveform.shape[1], end_padding_samples),
-                device=new_waveform.device,
-                dtype=new_waveform.dtype
-            )
-
-            # --- 4. Final waveform ---
-            final_waveform = torch.cat(
-                [leading_silence, new_waveform, trailing_silence],
-                dim=-1
-            )
-        else:  # NO PADDING - get wave form using start and end times
-            # Slice the waveform directly using the safe bounds calculated earlier
+        else:
             final_waveform = waveform[:, :, start_idx:end_idx]
-            
-            # Define new_waveform as well so the print statement doesn't error out
             new_waveform = final_waveform
+
 
 
         print(
@@ -128,20 +128,17 @@ class TKSpeakerAudioTrackExtractor:
 
         totalTracks, last_time_stamp = self.getTotalTracks(combinedTrackInfo)
         if (last_time_stamp >= max_duration):
-           raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {max_duration:.2f} seconds")
+            raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {max_duration:.2f} seconds")
 
-        nFrames = int(round((end_time - start_time) * 25)+25)
-
+        nFrames = int(round((end_time - start_time) * 25) + 25)
 
         # Force all numeric outputs to pure integers
         return (
-            {"waveform": final_waveform, "sample_rate": sample_rate}, 
-            int(totalTracks), 
-            int(nFrames), 
+            {"waveform": final_waveform, "sample_rate": sample_rate},
+            int(totalTracks),
+            int(nFrames),
             int(speakerNum)
         )
-
-
 
 
     def mergeAndSortTracks(self, combined_string1, combined_string2):
