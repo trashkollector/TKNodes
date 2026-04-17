@@ -26,7 +26,7 @@ class TKSpeakerAudioTrackExtractor:
     DESCRIPTION ="This node extracts all the track info enterd by the user  and then sorts them and combines them so it can subsequentally loop thru them in the workflow"
 
     def extractSpeakerTrackAudio(self, fullaudio, combinedTrackInfo1, combinedTrackInfo2, 
-                                      index, padAudioForLtx):
+                                      index, padAudioForLtx , addBreathNoise=False):
         # 1. Get the startTime and EndTime by calling the helper function
         combinedTrackInfo = self.mergeAndSortTracks(combinedTrackInfo1, combinedTrackInfo2)
         start_time, end_time, speaker = getTrack(index, combinedTrackInfo)
@@ -96,21 +96,33 @@ class TKSpeakerAudioTrackExtractor:
             import torchaudio
             import os
 
-            # Load breather once to get its exact sample count
-            asset_path = os.path.join(os.path.dirname(__file__), "assets", "breather.wav")
-            _breather, _breather_sr = torchaudio.load(asset_path, backend="soundfile")
-            if _breather_sr != sample_rate:
-                _breather = torchaudio.transforms.Resample(orig_freq=_breather_sr, new_freq=sample_rate)(_breather)
+            if addBreathNoise:
+                # Load breather once to get its exact sample count
+                asset_path = os.path.join(os.path.dirname(__file__), "assets", "breather.wav")
+                _breather, _breather_sr = torchaudio.load(asset_path, backend="soundfile")
+                if _breather_sr != sample_rate:
+                    _breather = torchaudio.transforms.Resample(orig_freq=_breather_sr, new_freq=sample_rate)(_breather)
 
-            # Match channel count
-            target_channels = waveform.shape[1]
-            if _breather.shape[0] < target_channels:
-                _breather = _breather.expand(target_channels, -1)
-            elif _breather.shape[0] > target_channels:
-                _breather = _breather[:target_channels, :]
+                # Match channel count
+                target_channels = waveform.shape[1]
+                if _breather.shape[0] < target_channels:
+                    _breather = _breather.expand(target_channels, -1)
+                elif _breather.shape[0] > target_channels:
+                    _breather = _breather[:target_channels, :]
 
-            # Add batch dim [batch, channels, samples]
-            leading_pad = _breather.unsqueeze(0).to(device=waveform.device, dtype=waveform.dtype)
+                # Add batch dim [batch, channels, samples]
+                leading_pad = _breather.unsqueeze(0).to(device=waveform.device, dtype=waveform.dtype)
+            else : # we are not using breather noise, we are going to use 1 second of silence instead
+                # Create 1 second of zeros: [batch, channels, sample_rate]
+                batch_size = waveform.shape[0]
+                target_channels = waveform.shape[1]
+                num_samples = sample_rate # 1 second = sample_rate
+                
+                leading_pad = torch.zeros(
+                    (batch_size, target_channels, num_samples), 
+                    device=waveform.device, 
+                    dtype=waveform.dtype
+                )
 
             # Get speech waveform
             new_waveform = waveform[:, :, start_idx:end_idx]
@@ -119,6 +131,7 @@ class TKSpeakerAudioTrackExtractor:
             final_waveform = torch.cat([leading_pad, new_waveform], dim=-1)
 
         else:
+            
             final_waveform = waveform[:, :, start_idx:end_idx]
             new_waveform = final_waveform
 
