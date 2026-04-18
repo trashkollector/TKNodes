@@ -227,7 +227,7 @@ class TKSpeakerAudioTrackExtractor:
                 # 2. STRICT VALIDATION: If data exists but is nonsensical, 
                 # return 0 for everything to block further processing.
                 if start < 0 or end < 0 or start >= end:
-                    print(f"CRITICAL ERROR: Invalid timestamps found (Start: {start}, End: {end})")
+                    print(f"*****  CRITICAL ERROR: Check to make sure your timings that you entered are correct.  Invalid timestamps found (Start: {start}, End: {end})")
                     return 0, 0.0
 
                 # 3. Track valid data
