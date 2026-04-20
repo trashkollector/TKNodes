@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import torchaudio
+import json
 
 
 class TKSpeakerAudioTrackExtractor:
@@ -309,6 +310,122 @@ class TKTotalTracksInAudio:
         total, last_end_time = extractor.getTotalTracks(merged)
         
         return (int(total),)
+
+
+
+
+
+class TKAudioSelectSplits:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "fullaudio": ("AUDIO",),
+                "duration": ("FLOAT", {"default": 0.0, "min": 0.0}),
+            },
+            "optional": {
+                "split_times": ("STRING", {"default": "[]"}),
+                # num_splits removed — controlled by JS +/- buttons only
+            }
+        }
+
+    RETURN_TYPES = ("STRING"           ,"STRING"             ,"STRING")
+    RETURN_NAMES = ("listOfSplitTimes","speakersTrackInfo1","speakersTrackInfo2")
+    FUNCTION = "getSplitTimesByUser"
+    CATEGORY = "TKNodes"
+    DESCRIPTION = "Use + - to add Splits, move thumbs to position where splits should occur.  Splits should occur when it transitions to a different speaker!"
+    OUTPUT_NODE = True
+
+    def getSplitTimesByUser(self, fullaudio, duration, split_times=[], num_splits=1):
+        waveform = fullaudio["waveform"]
+        sample_rate = fullaudio["sample_rate"]
+        computed_duration = waveform.shape[-1] / sample_rate
+
+        # Fix: Handle the case where split_times is already a list (from the UI)
+        if isinstance(split_times, list):
+            splits = [float(t) for t in split_times if 0 < float(t) < computed_duration]
+        else:
+            try:
+                splits = json.loads(split_times)
+                splits = [float(t) for t in splits if 0 < float(t) < computed_duration]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                splits = []
+        
+        # Critical: Sort the list so the interval string is in order
+        splits.sort()
+
+        # PASS 'splits' (the list) here, not the JSON string
+        trackInfo = self.convert_splits_to_intervals(splits, computed_duration)
+        (track1,track2) = self.split_intervals(trackInfo)
+        return {
+            "ui": { "duration": [computed_duration] },
+            "result": (json.dumps(splits), track1,track2)
+        }
+
+
+    def convert_splits_to_intervals(self, split_times_input, total_duration):
+        print(f"\n[DEBUG] Starting conversion...")
+        print(f"[DEBUG] Raw split_times_input type: {type(split_times_input)}")
+        print(f"[DEBUG] Raw split_times_input value: {split_times_input}")
+        print(f"[DEBUG] total_duration: {total_duration}")
+
+        try:
+            # Check if we even need to load JSON
+            if isinstance(split_times_input, list):
+                print("[DEBUG] Input is already a list. Skipping json.loads.")
+                raw_splits = split_times_input
+            else:
+                print("[DEBUG] Input is a string. Attempting json.loads.")
+                import json
+                raw_splits = json.loads(split_times_input)
+                
+            # Clean and Sort
+            splits = sorted([float(t) for t in raw_splits if 0 < float(t) < total_duration])
+            print(f"[DEBUG] Processed & Sorted splits: {splits}")
+            
+        except Exception as e:
+            print(f"[DEBUG] Error during parsing: {e}")
+            splits = []
+
+        result = []
+        current_start = 0.0
+
+        for split in splits:
+            # Format the segment start
+            result.append(f"{current_start:.3f}")
+            
+            # Create the 'end' by subtracting 0.01 from the split
+            # Rounding to 3 decimals keeps the precision you see in the debug
+            seg_end = round(split - 0.01, 3) 
+            result.append(f"{seg_end:.3f}")
+            
+            # Update start for the next segment
+            current_start = split
+
+        # Final segment: last split to total duration
+        result.append(f"{current_start:.3f}")
+        result.append(f"{total_duration:.3f}")
+        
+        final_string = ",".join(result)
+        print(f"[DEBUG] Final String: {final_string}\n")
+        
+        return final_string
+    
+
+
+    def split_intervals(self, input_str):
+        # 1. Clean the string and turn it into a list of items
+        # .strip() removes any extra spaces around the numbers
+        items = [x.strip() for x in input_str.split(",") if x.strip()]
+        
+        # 2. Separate into two lists by checking the "pair index"
+        # (i // 2) gives us 0 for the first pair, 1 for the second, etc.
+        str1_items = [items[i] for i in range(len(items)) if (i // 2) % 2 == 0]
+        str2_items = [items[i] for i in range(len(items)) if (i // 2) % 2 == 1]
+        
+        # 3. Join them back into comma-delimited strings
+        return ",".join(str1_items), ",".join(str2_items)
+
 
 
 
