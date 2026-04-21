@@ -13,8 +13,10 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             if (orig) orig.apply(this, arguments);
 
+            const node = this;
+
             setTimeout(() => {
-                const NUM_TRACKS = 5;
+                const NUM_TRACKS = 10;
 
                 const hideWidget = (w) => {
                     w.computeSize = () => [0, -4];

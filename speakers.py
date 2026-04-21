@@ -1,7 +1,17 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchaudio
 import json
+from pydub import AudioSegment
+from pydub.silence import detect_silence
+import os
+import sherpa_onnx
+import urllib.request
+import tarfile
+import folder_paths
+
+
 
 
 class TKSpeakerAudioTrackExtractor:
@@ -30,7 +40,7 @@ class TKSpeakerAudioTrackExtractor:
                                       index, padAudioForLtx , addBreathNoise=False):
         # 1. Get the startTime and EndTime by calling the helper function
         combinedTrackInfo = self.mergeAndSortTracks(combinedTrackInfo1, combinedTrackInfo2)
-        start_time, end_time, speaker = getTrack(index, combinedTrackInfo)
+        start_time, end_time, speaker = TKAudioSpeakerTalkTime.getTrack(index, combinedTrackInfo)
 
         print(f"INDEX {index}: start={start_time}, end={end_time}, duration={end_time-start_time:.2f}s")
 
@@ -54,7 +64,7 @@ class TKSpeakerAudioTrackExtractor:
         max_duration = max_samples / sample_rate
 
         # Validate before slicing
-        if start_time >= max_duration:
+        if start_time > max_duration:
             raise ValueError(f"INDEX {index}: ERROR start_time {start_time:.2f}s exceeds audio length {max_duration:.2f}s")
         if end_time > max_duration:
             raise ValueError(f"INDEX {index}: ERROR end_time {end_time:.2f}s exceeds audio length {max_duration:.2f}s — ERROR - Make sure you entered correct Speaker Times!")
@@ -145,8 +155,8 @@ class TKSpeakerAudioTrackExtractor:
             f"final_waveform={final_waveform.shape[-1]} samples")
 
         totalTracks, last_time_stamp = self.getTotalTracks(combinedTrackInfo)
-        if (last_time_stamp >= max_duration):
-            raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {max_duration:.2f} seconds")
+        if (last_time_stamp > max_duration):
+            raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {last_time_stamp} > {max_duration} seconds")
 
         nFrames = int(round((end_time - start_time) * 25) + 25)
 
@@ -234,7 +244,7 @@ class TKSpeakerAudioTrackExtractor:
                 # 3. Track valid data
                 total_populated += 1
                 if end > max_end_time:
-                    max_end_time = end
+                    max_end_time = end-0.01
                 
             except (ValueError, IndexError):
                 print(f"CRITICAL ERROR: Non-numeric track data at index {i}")
@@ -315,59 +325,130 @@ class TKTotalTracksInAudio:
 
 
 
-class TKAudioSelectSplits:
+class TKAudioDiarizationControl:
     @classmethod
     def INPUT_TYPES(s):
-        return {
+        # 1. Start with the core required fields
+        inputs = {
             "required": {
                 "fullaudio": ("AUDIO",),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0}),
+                "track_start_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
+                "track_end_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
             },
             "optional": {
-                "split_times": ("STRING", {"default": "[]"}),
-                # num_splits removed — controlled by JS +/- buttons only
+                "transition_times": ("STRING", {"default": "[]", "hidden":True}),
             }
         }
+        
+        # 2. Dynamically add tracks 2 through 10 to "optional"
+        for i in range(2, 11):
+            inputs["optional"][f"track_start_{i}"] = ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True})
+            inputs["optional"][f"track_end_{i}"] = ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True})
+            
+        return inputs
 
-    RETURN_TYPES = ("STRING"           ,"STRING"             ,"STRING")
-    RETURN_NAMES = ("listOfSplitTimes","speakersTrackInfo1","speakersTrackInfo2")
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("sherpa_diarization", "speakersTrackInfo1", "speakersTrackInfo2")
     FUNCTION = "getSplitTimesByUser"
     CATEGORY = "TKNodes"
-    DESCRIPTION = "Use + - to add Splits, move thumbs to position where splits should occur.  Splits should occur when it transitions to a different speaker!"
-    OUTPUT_NODE = True
 
-    def getSplitTimesByUser(self, fullaudio, duration, split_times=[], num_splits=1):
+    ## Gets the split times defined by User using the Custom Slider Node
+    ## Allow up to 20 splits.  The user can add/delete splits as needed to define tracks
+    # 3. Use **kwargs to catch all those dynamic track variables
+    def getSplitTimesByUser(self, fullaudio, duration, transition_times="[]", **kwargs):
+        # Example of how to access the data inside the function:
+       
+        tracks = []
+        for i in range(1, 11):
+            start = kwargs.get(f"track_start_{i}", 0.0)
+            end = kwargs.get(f"track_end_{i}", 0.0)
+            if start > 0 or end > 0: # Only process active tracks
+                tracks.append((start, end))
+        
+    
         waveform = fullaudio["waveform"]
         sample_rate = fullaudio["sample_rate"]
         computed_duration = waveform.shape[-1] / sample_rate
 
+        (diarization , transition_times) = self.getTransitionTimes(fullaudio)
+        
         # Fix: Handle the case where split_times is already a list (from the UI)
-        if isinstance(split_times, list):
-            splits = [float(t) for t in split_times if 0 < float(t) < computed_duration]
+        if isinstance(transition_times, list):
+            trackSplits = [float(t) for t in transition_times if 0 < float(t) < computed_duration]
         else:
             try:
-                splits = json.loads(split_times)
-                splits = [float(t) for t in splits if 0 < float(t) < computed_duration]
+                trackSplits = json.loads(transition_times)
+                trackSplits = [float(t) for t in trackSplits if 0 < float(t) < computed_duration]
             except (json.JSONDecodeError, TypeError, ValueError):
-                splits = []
+                trackSplits = []
         
         # Critical: Sort the list so the interval string is in order
-        splits.sort()
+        trackSplits.sort()
 
         # PASS 'splits' (the list) here, not the JSON string
-        trackInfo = self.convert_splits_to_intervals(splits, computed_duration)
+        trackInfo = self.convert_splits_to_intervals(trackSplits, computed_duration)
         (track1,track2) = self.split_intervals(trackInfo)
+
+        transition_times_sec = [round(t, 3) for t in transition_times]
+
         return {
-            "ui": { "duration": [computed_duration] },
-            "result": (json.dumps(splits), track1,track2)
+            "ui": {
+                "duration": [computed_duration],
+                "transition_times": transition_times_sec,   # ← this line must be here
+                "tracks": tracks,  # <--- Add this!
+            },
+            "result": (json.dumps(diarization), track1, track2)
         }
 
 
+
+    def getTransitionTimes(self, fullaudio):
+
+        # get the silence
+        diarization = self.get_speaker_splits_from_audio_with_sherpa(fullaudio)
+
+
+        if isinstance(diarization, list):
+            print("length:", len(diarization))
+            for i, seg in enumerate(diarization):
+                print(f"  [{i}] {seg}")
+        else:
+            print("Diarization is NOT a list:", diarization)
+
+
+        # guarantee it's always a list
+        diarization = diarization or []
+        # diarization is a list of dicts: {start, end, speaker}
+        # ensure it's sorted
+        diarization = sorted(diarization, key=lambda x: x["start"])
+
+        print("\n================ DIARIZATION ================")
+        print(f"Raw diarization type: {type(diarization)}")
+
+        if diarization is None:
+            print("Diarization is NONE — your function returned nothing!")
+        else:
+            print(f"Diarization length: {len(diarization)}")
+            print("Diarization entries:")
+            for idx, seg in enumerate(diarization):
+                print(f"  [{idx}] start={seg.get('start')}  end={seg.get('end')}  speaker={seg.get('speaker')}")
+
+        print("===================================================\n")
+
+        transition_times = []
+
+        for i in range(len(diarization) - 1):
+            end_prev = diarization[i]["end"]
+            start_next = diarization[i + 1]["start"]
+            midpoint = (end_prev + start_next) / 2.0
+            transition_times.append(midpoint)
+
+        return (diarization, transition_times)
+
+
+    ## takes a JSON list and converts into tracks used by speakers.
     def convert_splits_to_intervals(self, split_times_input, total_duration):
-        print(f"\n[DEBUG] Starting conversion...")
-        print(f"[DEBUG] Raw split_times_input type: {type(split_times_input)}")
-        print(f"[DEBUG] Raw split_times_input value: {split_times_input}")
-        print(f"[DEBUG] total_duration: {total_duration}")
 
         try:
             # Check if we even need to load JSON
@@ -381,7 +462,7 @@ class TKAudioSelectSplits:
                 
             # Clean and Sort
             splits = sorted([float(t) for t in raw_splits if 0 < float(t) < total_duration])
-            print(f"[DEBUG] Processed & Sorted splits: {splits}")
+            print(f"[DEBUG]  Processed & Sorted splits: {splits}")
             
         except Exception as e:
             print(f"[DEBUG] Error during parsing: {e}")
@@ -397,6 +478,9 @@ class TKAudioSelectSplits:
             # Create the 'end' by subtracting 0.01 from the split
             # Rounding to 3 decimals keeps the precision you see in the debug
             seg_end = round(split - 0.01, 3) 
+            if (seg_end > total_duration):
+                seg_end=total_duration-0.1
+                
             result.append(f"{seg_end:.3f}")
             
             # Update start for the next segment
@@ -412,7 +496,7 @@ class TKAudioSelectSplits:
         return final_string
     
 
-
+    ## takes a list of tracks and separates it so it can be used by two alternating speakers.
     def split_intervals(self, input_str):
         # 1. Clean the string and turn it into a list of items
         # .strip() removes any extra spaces around the numbers
@@ -425,6 +509,127 @@ class TKAudioSelectSplits:
         
         # 3. Join them back into comma-delimited strings
         return ",".join(str1_items), ",".join(str2_items)
+
+
+    def download_speaker_models(self):
+        dest_dir = os.path.join(folder_paths.models_dir, "onnx")
+        os.makedirs(dest_dir, exist_ok=True)
+
+        # Define EXACT names your loader expects
+        seg_target = "sherpa-onnx-pyannote-segmentation-3-0.onnx"
+        #emb_target = "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+        emb_target = "nemo_en_titanet_large.onnx"
+
+        # 1. Handle Segmentation (The tarball)
+        seg_path = os.path.join(dest_dir, seg_target)
+        if not os.path.exists(seg_path):
+            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
+            temp_tar = os.path.join(dest_dir, "temp_seg.tar.bz2")
+            print(f"[TKNodes] Downloading segmentation model...")
+            urllib.request.urlretrieve(url, temp_tar)
+            
+            with tarfile.open(temp_tar, "r:bz2") as tar:
+                for member in tar.getmembers():
+                    if member.name.endswith(".onnx"):
+                        # FORCE the name to match your loader
+                        member.name = seg_target 
+                        tar.extract(member, path=dest_dir)
+                        break
+            os.remove(temp_tar)
+
+        # 2. Handle Embedding (Direct download)
+        emb_path = os.path.join(dest_dir, emb_target)
+        if not os.path.exists(emb_path):
+
+            print(f"[TKNodes] Downloading embedding model...")
+            url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_large.onnx"
+            urllib.request.urlretrieve(url, emb_path)
+
+        print(f"[TKNodes] ONNX Models verified in: {dest_dir}")
+
+  
+    def get_speaker_splits_from_audio_with_sherpa(self, audio_data):
+        print(f"[DEBUG]  Inside get_speaker_splits_from_audio_with_sherpa ")
+        waveform = audio_data['waveform']
+        sample_rate = audio_data['sample_rate']
+        
+        # 1. Convert torch tensor to mono
+        if waveform.dim() > 1:
+            waveform = waveform.mean(dim=0)
+        
+        # 2. Resample to 16kHz (Sherpa-ONNX requirement)
+        if sample_rate != 16000:
+            import torch.nn.functional as F
+            num_samples = int(waveform.shape[-1] * 16000 / sample_rate)
+            waveform = F.interpolate(waveform.view(1, 1, -1), size=num_samples, mode='linear', align_corners=False).view(-1)
+            sample_rate = 16000
+
+        audio_np = waveform.detach().cpu().numpy().astype(np.float32)
+
+        # 3. Flatten to 1D
+        audio_np = audio_np.reshape(-1)
+
+        # 4. Normalize if needed
+        if np.max(np.abs(audio_np)) > 1.0:
+            audio_np = audio_np / 32768.0
+
+        # 5. Configure paths
+        models_dir = folder_paths.models_dir
+        onnx_path = os.path.join(models_dir, "onnx")
+        
+        segmentation_path = os.path.join(onnx_path, "sherpa-onnx-pyannote-segmentation-3-0.onnx")
+        embedding_path = os.path.join(onnx_path, "nemo_en_titanet_large.onnx")
+
+        if not os.path.exists(segmentation_path) or not os.path.exists(embedding_path):
+            self.download_speaker_models()
+
+        print(f"[DEBUG]  Successfully found SHERPA models ")
+        # Use the full prefix to avoid IDE "not found" errors
+        # Use the consolidated 2026 class names to clear the IDE errors
+        config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
+            segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
+                pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
+                    model=segmentation_path,
+                ),
+                
+            ),
+            embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(
+                model=embedding_path,  # nemo_titanet_l
+            ),
+            clustering=sherpa_onnx.FastClusteringConfig(
+                num_clusters=2,
+                threshold=0.8,
+            ),
+        )
+
+
+        sd = sherpa_onnx.OfflineSpeakerDiarization(config)
+        print(f"[DEBUG]  Successfully found SHERPA models ")   
+
+        # 6. Process the audio
+        result = sd.process(audio_np)
+        print(f"[DEBUG]  Successfully processed audio ")  
+
+
+        # sort into a list of segments
+        segments_list = result.sort_by_start_time()
+
+        # if diarization failed or returned nothing
+        if not segments_list:
+            print("DEBUG: No segments returned by Sherpa.")
+            return []
+
+        segments = []
+        for r in segments_list:
+            segments.append({
+                "start": r.start,
+                "end": r.end,
+                "speaker": r.speaker
+            })
+        print(f"[DEBUG]  Sherpa has segments to return")  
+        return segments
+
+
 
 
 
@@ -484,33 +689,33 @@ class TKAudioSpeakerTalkTime:
 
 
    
+    @staticmethod
+    def getTrack(index, combined_string_of_tracks):
+        # Fix: If ComfyUI sends this as a tuple, grab the first item (the string)
+        if isinstance(combined_string_of_tracks, tuple):
+            combined_string_of_tracks = combined_string_of_tracks[0]
+        
+        # Check for None or empty strings to prevent crashes
+        if not combined_string_of_tracks or not isinstance(combined_string_of_tracks, str):
+            return 0.0, 0.0, ""
 
-def getTrack(index, combined_string_of_tracks):
-    # Fix: If ComfyUI sends this as a tuple, grab the first item (the string)
-    if isinstance(combined_string_of_tracks, tuple):
-        combined_string_of_tracks = combined_string_of_tracks[0]
-    
-    # Check for None or empty strings to prevent crashes
-    if not combined_string_of_tracks or not isinstance(combined_string_of_tracks, str):
-        return 0.0, 0.0, ""
-
-    # Split the string back into a list of individual values
-    parts = [p.strip() for p in combined_string_of_tracks.split(",") if p.strip()]
-    
-    # Calculate the starting position (1-based index)
-    # Changed multiplier to 3 because each track is now [start, end, speaker]
-    start_pos = (index - 1) * 3
-    
-    try:
-        # Pull the start, end, and speaker values
-        starttime = float(parts[start_pos])
-        endtime = float(parts[start_pos + 1])
-        speaker = parts[start_pos + 2]
-        return starttime, endtime, speaker
-    except (IndexError, ValueError) as e:
-        # Log the error and the problematic index
-        print(f"Error retrieving track at index {index}: {e}")
-        # Return 0.0 and empty string if the index doesn't exist
-        return 0.0, 0.0, ""
+        # Split the string back into a list of individual values
+        parts = [p.strip() for p in combined_string_of_tracks.split(",") if p.strip()]
+        
+        # Calculate the starting position (1-based index)
+        # Changed multiplier to 3 because each track is now [start, end, speaker]
+        start_pos = (index - 1) * 3
+        
+        try:
+            # Pull the start, end, and speaker values
+            starttime = float(parts[start_pos])
+            endtime = float(parts[start_pos + 1])
+            speaker = parts[start_pos + 2]
+            return starttime, endtime, speaker
+        except (IndexError, ValueError) as e:
+            # Log the error and the problematic index
+            print(f"Error retrieving track at index {index}: {e}")
+            # Return 0.0 and empty string if the index doesn't exist
+            return 0.0, 0.0, ""
 
 

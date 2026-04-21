@@ -7,54 +7,7 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 
-def _get_private_splits_from_audio(audio_data, chunk_size, variation):
-    # 1. Extract data from the ComfyUI Audio dictionary
-    waveform = audio_data['waveform']      # Shape: [Batch, Channels, Samples]
-    sample_rate = audio_data['sample_rate']
-    
-    # 2. Convert PyTorch tensor to raw bytes for pydub
-    # We flatten all channels into a single mono stream for silence detection
-    if waveform.dim() > 2:
-        waveform = waveform.mean(dim=1) # Convert to mono
-    
-    # Scale float32 (-1.0 to 1.0) to int16 for pydub compatibility
-    audio_np = (waveform.cpu().numpy() * 32767).astype(np.int16)
-    raw_data = audio_np.tobytes()
-    
-    # 3. Create pydub AudioSegment from raw bytes
-    audio = AudioSegment(
-        data=raw_data,
-        sample_width=2, # 16-bit (2 bytes)
-        frame_rate=sample_rate,
-        channels=1
-    )
-    
-    # 4. Same splitting logic as before
-    total_ms = len(audio)
-    target, var = chunk_size * 1000, variation * 1000
-    splits, curr = [0], 0
-    
-    while curr + (target - var) < total_ms:
-        win_start = curr + (target - var)
-        win_end = min(curr + (target + var), total_ms)
-        window = audio[win_start:win_end]
-        
-        silence = detect_silence(window, min_silence_len=300, silence_thresh=-40)
-        if silence:
-            s_start, s_end = silence[0]
-            split_at = win_start + s_start + (s_end - s_start) // 2
-        else:
-            split_at = curr + target
-            
-        splits.append(split_at)
-        curr = split_at
 
-
-    # add this fix to avoid 0 length    
-    if splits[-1] < total_ms:
-        splits.append(total_ms)
-    return splits
-    
 
 
 # --- THE COMFYUI NODE ---
@@ -81,7 +34,7 @@ class TKSmartAudioChunker:
 
     def calculate(self, audio, index, chunk_secs, variation):
         # Run the private logic using the audio wire data
-        splits = _get_private_splits_from_audio(audio, chunk_secs, variation)
+        splits = self.get_silence_splits_from_audio(audio, chunk_secs, variation)
 
         num_chunks = len(splits) - 1
         idx = max(0, min(index, num_chunks - 1))
@@ -105,7 +58,56 @@ class TKSmartAudioChunker:
             startChunkMs/1000.0,
             durMs  / 1000.0,
         )
- 
+    
+
+    def get_silence_splits_from_audio(self, audio_data, chunk_size, variation):
+        # 1. Extract data from the ComfyUI Audio dictionary
+        waveform = audio_data['waveform']      # Shape: [Batch, Channels, Samples]
+        sample_rate = audio_data['sample_rate']
+        
+        # 2. Convert PyTorch tensor to raw bytes for pydub
+        # We flatten all channels into a single mono stream for silence detection
+        if waveform.dim() > 2:
+            waveform = waveform.mean(dim=1) # Convert to mono
+        
+        # Scale float32 (-1.0 to 1.0) to int16 for pydub compatibility
+        audio_np = (waveform.cpu().numpy() * 32767).astype(np.int16)
+        raw_data = audio_np.tobytes()
+        
+        # 3. Create pydub AudioSegment from raw bytes
+        audio = AudioSegment(
+            data=raw_data,
+            sample_width=2, # 16-bit (2 bytes)
+            frame_rate=sample_rate,
+            channels=1
+        )
+        
+        # 4. Same splitting logic as before
+        total_ms = len(audio)
+        target, var = chunk_size * 1000, variation * 1000
+        splits, curr = [0], 0
+        
+        while curr + (target - var) < total_ms:
+            win_start = curr + (target - var)
+            win_end = min(curr + (target + var), total_ms)
+            window = audio[win_start:win_end]
+            
+            silence = detect_silence(window, min_silence_len=300, silence_thresh=-40)
+            if silence:
+                s_start, s_end = silence[0]
+                split_at = win_start + s_start + (s_end - s_start) // 2
+            else:
+                split_at = curr + target
+                
+            splits.append(split_at)
+            curr = split_at
+
+
+        # add this fix to avoid 0 length    
+        if splits[-1] < total_ms:
+            splits.append(total_ms)
+        return splits
+    
 
 
 class TKTrimImageOverlap:
