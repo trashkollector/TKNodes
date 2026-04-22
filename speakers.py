@@ -64,9 +64,9 @@ class TKSpeakerAudioTrackExtractor:
         max_duration = max_samples / sample_rate
 
         # Validate before slicing
-        if start_time > max_duration:
+        if start_time > max_duration+0.1:
             raise ValueError(f"INDEX {index}: ERROR start_time {start_time:.2f}s exceeds audio length {max_duration:.2f}s")
-        if end_time > max_duration:
+        if end_time > max_duration+0.1:
             raise ValueError(f"INDEX {index}: ERROR end_time {end_time:.2f}s exceeds audio length {max_duration:.2f}s — ERROR - Make sure you entered correct Speaker Times!")
 
         start_idx = max(0, min(start_sample, max_samples))
@@ -156,7 +156,8 @@ class TKSpeakerAudioTrackExtractor:
 
         totalTracks, last_time_stamp = self.getTotalTracks(combinedTrackInfo)
         if (last_time_stamp > max_duration):
-            raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {last_time_stamp} > {max_duration} seconds")
+            if (last_time_stamp - max_duration > 0.1):
+               raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {last_time_stamp} > {max_duration} seconds")
 
         nFrames = int(round((end_time - start_time) * 25) + 25)
 
@@ -243,8 +244,8 @@ class TKSpeakerAudioTrackExtractor:
 
                 # 3. Track valid data
                 total_populated += 1
-                if end > max_end_time:
-                    max_end_time = end-0.01
+                if end >= max_end_time:
+                    max_end_time = end
                 
             except (ValueError, IndexError):
                 print(f"CRITICAL ERROR: Non-numeric track data at index {i}")
@@ -371,7 +372,11 @@ class TKAudioDiarizationControl:
         sample_rate = fullaudio["sample_rate"]
         computed_duration = waveform.shape[-1] / sample_rate
 
-        (diarization , transition_times) = self.getTransitionTimes(fullaudio)
+        # mereged means take consecutive speakers of the same
+        (diarization,merged_diarization) = self.get_diarization_speakers(fullaudio)
+
+        
+        transition_times = self.getTransitionTimes(fullaudio, merged_diarization)
         
         # Fix: Handle the case where split_times is already a list (from the UI)
         if isinstance(transition_times, list):
@@ -403,11 +408,9 @@ class TKAudioDiarizationControl:
 
 
 
-    def getTransitionTimes(self, fullaudio):
+    def getTransitionTimes(self, fullaudio, diarization):
 
-        # get the silence
-        diarization = self.get_speaker_splits_from_audio_with_sherpa(fullaudio)
-
+      
 
         if isinstance(diarization, list):
             print("length:", len(diarization))
@@ -444,7 +447,7 @@ class TKAudioDiarizationControl:
             midpoint = (end_prev + start_next) / 2.0
             transition_times.append(midpoint)
 
-        return (diarization, transition_times)
+        return transition_times
 
 
     ## takes a JSON list and converts into tracks used by speakers.
@@ -548,7 +551,7 @@ class TKAudioDiarizationControl:
         print(f"[TKNodes] ONNX Models verified in: {dest_dir}")
 
   
-    def get_speaker_splits_from_audio_with_sherpa(self, audio_data):
+    def get_diarization_speakers(self, audio_data):
         print(f"[DEBUG]  Inside get_speaker_splits_from_audio_with_sherpa ")
         waveform = audio_data['waveform']
         sample_rate = audio_data['sample_rate']
@@ -598,7 +601,7 @@ class TKAudioDiarizationControl:
             ),
             clustering=sherpa_onnx.FastClusteringConfig(
                 num_clusters=2,
-                threshold=0.8,
+                threshold=0.7,
             ),
         )
 
@@ -608,7 +611,7 @@ class TKAudioDiarizationControl:
 
         # 6. Process the audio
         result = sd.process(audio_np)
-        print(f"[DEBUG]  Successfully processed audio ")  
+ 
 
 
         # sort into a list of segments
@@ -618,16 +621,34 @@ class TKAudioDiarizationControl:
         if not segments_list:
             print("DEBUG: No segments returned by Sherpa.")
             return []
+        
+
 
         segments = []
+        merged_segments = []
+
         for r in segments_list:
+            # 1. Maintain the original segments list as requested
             segments.append({
                 "start": r.start,
                 "end": r.end,
                 "speaker": r.speaker
             })
-        print(f"[DEBUG]  Sherpa has segments to return")  
-        return segments
+
+            # 2. Build the merged_segments list by combining consecutive same-speaker entries
+            if not merged_segments or r.speaker != merged_segments[-1]["speaker"]:
+                # New speaker detected: start a new entry
+                merged_segments.append({
+                    "start": r.start,
+                    "end": r.end,
+                    "speaker": r.speaker
+                })
+            else:
+                # Same speaker continues: update the end time of the last entry
+                merged_segments[-1]["end"] = r.end
+
+        return segments, merged_segments
+
 
 
 

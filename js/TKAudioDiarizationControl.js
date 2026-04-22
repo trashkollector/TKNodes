@@ -474,6 +474,17 @@ app.registerExtension({
                             .filter(v => !isNaN(v) && v >= 0);
                         console.log("[TKTransition] transitionTimes after processing:", transitionTimes);  // ← ADD THIS
 
+                        console.log("****TRANSITIONS*****");
+                        
+                        node.widgets.forEach(w => {
+                            if (w.name?.startsWith("track_start_") || w.name?.startsWith("track_end_")) {
+                                w.value = 0;
+                            }
+                        });
+                       
+                        populateFromTransitions(node, transitionTimes);
+
+
                         node.setDirtyCanvas(true, true);
                     } else {
                         console.log("[TKTransition] transition_times was NOT in message!");  // ← ADD THIS
