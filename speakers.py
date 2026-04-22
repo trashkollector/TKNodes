@@ -10,9 +10,47 @@ import sherpa_onnx
 import urllib.request
 import tarfile
 import folder_paths
+from server import PromptServer
+from aiohttp import web
+
+
+@PromptServer.instance.routes.post("/tk/detect_speakers")
+async def detect_speakers_endpoint(request):
+    try:
+        print("🔍 detect_speakers endpoint hit!")  # ← add this
+        json_data = await request.json()
+        print("audio file:", json_data.get("audio"))
+
+        audio_name = json_data.get("audio")
+        
+        # 1. Locate the file (assuming it's in ComfyUI's input folder)
+        # You may need to adjust this path based on where your audio is stored
+        import folder_paths
+        input_dir = folder_paths.get_input_directory()
+        audio_path = os.path.join(input_dir, audio_name)
+
+        speakerClass = TKLocateSpeakersUsingSilenceBreaks()
+  
+
+        segments, duration = speakerClass.get_diarization_speakers_from_path(audio_path)
+        mergedSegs = speakerClass.merge_small_consecutive_segments(segments)
+        speakerClass.set_tracks_from_button(mergedSegs)  # store for later
+
+        return web.json_response({"speaker_times": mergedSegs, "duration": duration})
+        
+    except Exception as e:
+        print(f"[TK Error] Detection failed: {e}")
+        return web.json_response({"error": str(e)}, status=500)
 
 
 
+
+
+
+
+
+# This node extracts all the track info enterd by the user  and then sorts them and combines 
+# them so it can subsequentally loop thru them in the workflow"
 
 class TKSpeakerAudioTrackExtractor:
     @classmethod
@@ -39,6 +77,8 @@ class TKSpeakerAudioTrackExtractor:
     def extractSpeakerTrackAudio(self, fullaudio, combinedTrackInfo1, combinedTrackInfo2, 
                                       index, padAudioForLtx , addBreathNoise=False):
         # 1. Get the startTime and EndTime by calling the helper function
+
+        print(f"track info combined={combinedTrackInfo1} {combinedTrackInfo2}")
         combinedTrackInfo = self.mergeAndSortTracks(combinedTrackInfo1, combinedTrackInfo2)
         start_time, end_time, speaker = TKAudioSpeakerTalkTime.getTrack(index, combinedTrackInfo)
 
@@ -149,7 +189,7 @@ class TKSpeakerAudioTrackExtractor:
 
 
         print(
-            f"INDEX {index}: start={start_time}, end={end_time}, "
+            f"Get Track - INDEX {index}: start={start_time}, end={end_time}, "
             f"duration={end_time-start_time:.2f}s | "
             f"new_waveform={new_waveform.shape[-1]} samples | "
             f"final_waveform={final_waveform.shape[-1]} samples")
@@ -326,118 +366,161 @@ class TKTotalTracksInAudio:
 
 
 
-class TKAudioDiarizationControl:
+class TKLocateSpeakersUsingSilenceBreaks:
     @classmethod
     def INPUT_TYPES(s):
         # 1. Start with the core required fields
         inputs = {
             "required": {
+                "silence_threshold" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 2.0 , "step": 0.1}),
                 "fullaudio": ("AUDIO",),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0}),
                 "track_start_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
                 "track_end_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
             },
             "optional": {
-                "transition_times": ("STRING", {"default": "[]", "hidden":True}),
+                "speaker_times": ("STRING", {"default": "[]", "hidden":True}),
             }
         }
         
-        # 2. Dynamically add tracks 2 through 10 to "optional"
-        for i in range(2, 11):
+        # 2. Dynamically add tracks 2 through 14 to "optional"
+        for i in range(2, 15):
             inputs["optional"][f"track_start_{i}"] = ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True})
             inputs["optional"][f"track_end_{i}"] = ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True})
             
         return inputs
 
     RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("sherpa_diarization", "speakersTrackInfo1", "speakersTrackInfo2")
+    RETURN_NAMES = ("diarization", "speakersTrackInfo1", "speakersTrackInfo2")
     FUNCTION = "getSplitTimesByUser"
     CATEGORY = "TKNodes"
+
+    diar_segments_by_user=[]
+    user_loaded_segments=False
 
     ## Gets the split times defined by User using the Custom Slider Node
     ## Allow up to 20 splits.  The user can add/delete splits as needed to define tracks
     # 3. Use **kwargs to catch all those dynamic track variables
-    def getSplitTimesByUser(self, fullaudio, duration, transition_times="[]", **kwargs):
+    def getSplitTimesByUser(self, silence_threshold_ms, fullaudio, duration, speaker_times="[]", **kwargs):
         # Example of how to access the data inside the function:
        
-        tracks = []
-        for i in range(1, 11):
+        user_defined_tracks = []
+        for i in range(1, 15):
+            # Get the value
             start = kwargs.get(f"track_start_{i}", 0.0)
             end = kwargs.get(f"track_end_{i}", 0.0)
-            if start > 0 or end > 0: # Only process active tracks
-                tracks.append((start, end))
-        
+            
+            # FORCE them to be standard floats
+            # .item() handles Tensors, float() handles everything else
+            s_val = start.item() if hasattr(start, "item") else float(start)
+            e_val = end.item() if hasattr(end, "item") else float(end)
+            
+            user_defined_tracks.append((s_val, e_val))
     
         waveform = fullaudio["waveform"]
         sample_rate = fullaudio["sample_rate"]
         computed_duration = waveform.shape[-1] / sample_rate
 
-        # mereged means take consecutive speakers of the same
-        (diarization,merged_diarization) = self.get_diarization_speakers(fullaudio)
+  
+        if self.user_loaded_segments:
+            diarization = self.diar_segments_by_user
+        else :
+            #diarization = self.get_diarization_speakers_old(fullaudio)  SHERPA
+            
+            # PYDUB silence breaks
+            diarization_raw =  self.get_diarization_speakers_using_silence(fullaudio, True, 500, silence_threshold_ms);   
 
-        
-        transition_times = self.getTransitionTimes(fullaudio, merged_diarization)
-        
-        # Fix: Handle the case where split_times is already a list (from the UI)
-        if isinstance(transition_times, list):
-            trackSplits = [float(t) for t in transition_times if 0 < float(t) < computed_duration]
-        else:
-            try:
-                trackSplits = json.loads(transition_times)
-                trackSplits = [float(t) for t in trackSplits if 0 < float(t) < computed_duration]
-            except (json.JSONDecodeError, TypeError, ValueError):
-                trackSplits = []
-        
-        # Critical: Sort the list so the interval string is in order
-        trackSplits.sort()
+            # merge consecutive small chunks of same speaker
+            diarization = self.merge_small_consecutive_segments(diarization_raw)
 
-        # PASS 'splits' (the list) here, not the JSON string
-        trackInfo = self.convert_splits_to_intervals(trackSplits, computed_duration)
-        (track1,track2) = self.split_intervals(trackInfo)
-
-        transition_times_sec = [round(t, 3) for t in transition_times]
+ 
+        speaker_times = diarization
+        (speaker1tracks, speaker2tracks) = self.get_2_speakers(diarization)
+        
+        sp1 = self.convert_segments_to_track_string(speaker1tracks)
+        sp2 = self.convert_segments_to_track_string(speaker2tracks)
 
         return {
             "ui": {
                 "duration": [computed_duration],
-                "transition_times": transition_times_sec,   # ← this line must be here
-                "tracks": tracks,  # <--- Add this!
+                "speaker_times": speaker_times ,   # ← this line must be here
+                "user_defined_tracks": user_defined_tracks,  
+             
             },
-            "result": (json.dumps(diarization), track1, track2)
+            "result": (json.dumps(diarization), sp1,sp2)
         }
 
 
+    @classmethod  # <--- Add this decorator
+    def set_tracks_from_button(cls, segments):
+        segments_by_user = segments
+        user_loaded_segments=True
 
-    def getTransitionTimes(self, fullaudio, diarization):
 
-      
+    def convert_segments_to_track_string(self, segments):
+        """
+        Converts a list of segment dictionaries into a flat string.
+        Input: [{"start": 0.0, "end": 3.9, "speaker": 0}, ...]
+        Output: "0.000,3.942,5.193,9.510"
+        """
+        if not segments:
+            return ""
+            
+        parts = []
+        for seg in segments:
+            # Access by key name since 'segments' is a list of dicts
+            start = seg.get("start", 0.0)
+            end = seg.get("end", 0.0)
+            
+            parts.append(f"{float(start):.3f}")
+            parts.append(f"{float(end):.3f}")
+            
+        return ",".join(parts)
 
-        if isinstance(diarization, list):
-            print("length:", len(diarization))
-            for i, seg in enumerate(diarization):
-                print(f"  [{i}] {seg}")
-        else:
-            print("Diarization is NOT a list:", diarization)
+    
 
+
+    def build_speaker_tracks(self, **kwargs):
+        """
+        Reads track_start_1..10 and track_end_1..10 from kwargs.
+        Tracks 1-5  → Speaker1Tracks
+        Tracks 6-10 → Speaker2Tracks
+
+        Returns:
+            tuple: (Speaker1Tracks, Speaker2Tracks) as comma-delimited strings
+        """
+        speaker1_parts = []
+        speaker2_parts = []
+
+        for i in range(1, 11):
+            start = kwargs.get(f"track_start_{i}", 0.0)
+            end   = kwargs.get(f"track_end_{i}",   0.0)
+
+            # Skip empty/default tracks
+            if start == 0.0 and end == 0.0:
+                continue
+
+            entry = f"{start:.3f},{end:.3f}"
+
+            if i <= 5:
+                speaker1_parts.append(entry)
+            else:
+                speaker2_parts.append(entry)
+
+        Speaker1Tracks = ", ".join(speaker1_parts)
+        Speaker2Tracks = ", ".join(speaker2_parts)
+
+        return Speaker1Tracks, Speaker2Tracks
+    
+
+
+    def getTransitionMidPoints(self, fullaudio, diarization):
 
         # guarantee it's always a list
         diarization = diarization or []
         # diarization is a list of dicts: {start, end, speaker}
         # ensure it's sorted
         diarization = sorted(diarization, key=lambda x: x["start"])
-
-        print("\n================ DIARIZATION ================")
-        print(f"Raw diarization type: {type(diarization)}")
-
-        if diarization is None:
-            print("Diarization is NONE — your function returned nothing!")
-        else:
-            print(f"Diarization length: {len(diarization)}")
-            print("Diarization entries:")
-            for idx, seg in enumerate(diarization):
-                print(f"  [{idx}] start={seg.get('start')}  end={seg.get('end')}  speaker={seg.get('speaker')}")
-
-        print("===================================================\n")
 
         transition_times = []
 
@@ -451,7 +534,7 @@ class TKAudioDiarizationControl:
 
 
     ## takes a JSON list and converts into tracks used by speakers.
-    def convert_splits_to_intervals(self, split_times_input, total_duration):
+    def get_speaker_tracks_from_splits(self, split_times_input, total_duration):
 
         try:
             # Check if we even need to load JSON
@@ -500,7 +583,7 @@ class TKAudioDiarizationControl:
     
 
     ## takes a list of tracks and separates it so it can be used by two alternating speakers.
-    def split_intervals(self, input_str):
+    def seperate_tracks_for_speakers(self, input_str):
         # 1. Clean the string and turn it into a list of items
         # .strip() removes any extra spaces around the numbers
         items = [x.strip() for x in input_str.split(",") if x.strip()]
@@ -514,7 +597,7 @@ class TKAudioDiarizationControl:
         return ",".join(str1_items), ",".join(str2_items)
 
 
-    def download_speaker_models(self):
+    def download_sherpa_speaker_models(self):
         dest_dir = os.path.join(folder_paths.models_dir, "onnx")
         os.makedirs(dest_dir, exist_ok=True)
 
@@ -551,7 +634,7 @@ class TKAudioDiarizationControl:
         print(f"[TKNodes] ONNX Models verified in: {dest_dir}")
 
   
-    def get_diarization_speakers(self, audio_data):
+    def get_diarization_speakers_old(self, audio_data):
         print(f"[DEBUG]  Inside get_speaker_splits_from_audio_with_sherpa ")
         waveform = audio_data['waveform']
         sample_rate = audio_data['sample_rate']
@@ -584,7 +667,7 @@ class TKAudioDiarizationControl:
         embedding_path = os.path.join(onnx_path, "nemo_en_titanet_large.onnx")
 
         if not os.path.exists(segmentation_path) or not os.path.exists(embedding_path):
-            self.download_speaker_models()
+            self.download_sherpa_speaker_models()
 
         print(f"[DEBUG]  Successfully found SHERPA models ")
         # Use the full prefix to avoid IDE "not found" errors
@@ -625,7 +708,6 @@ class TKAudioDiarizationControl:
 
 
         segments = []
-        merged_segments = []
 
         for r in segments_list:
             # 1. Maintain the original segments list as requested
@@ -635,23 +717,250 @@ class TKAudioDiarizationControl:
                 "speaker": r.speaker
             })
 
-            # 2. Build the merged_segments list by combining consecutive same-speaker entries
-            if not merged_segments or r.speaker != merged_segments[-1]["speaker"]:
-                # New speaker detected: start a new entry
-                merged_segments.append({
-                    "start": r.start,
-                    "end": r.end,
-                    "speaker": r.speaker
-                })
+        return segments
+
+
+    def get_diarization_speakers_using_silence(self, audio_data,
+                                include_gap,
+                                merge_threshold_ms=500,      # < 0.5s = merge (same segment)
+                                split_threshold_ms=800):     # > 0.8s = new speaker toggle
+        
+        waveform = audio_data['waveform']
+        sample_rate = audio_data['sample_rate']
+
+        # 1. Convert torch tensor to mono
+        if waveform.dim() > 1:
+            waveform = waveform.mean(dim=0)
+
+        # 2. Convert to numpy int16 for pydub
+        audio_np = waveform.detach().cpu().numpy().astype(np.float32)
+        audio_np = audio_np.reshape(-1)
+
+        # Normalize to int16 range
+        if np.max(np.abs(audio_np)) <= 1.0:
+            audio_int16 = (audio_np * 32767).astype(np.int16)
+        else:
+            audio_int16 = audio_np.astype(np.int16)
+
+        # 3. Build pydub AudioSegment from raw numpy data
+        audio_segment = AudioSegment(
+            audio_int16.tobytes(),
+            frame_rate=sample_rate,
+            sample_width=2,   # int16 = 2 bytes
+            channels=1
+        )
+
+        # 4. Detect non-silent chunks
+        from pydub.silence import detect_nonsilent
+        chunks = detect_nonsilent(
+            audio_segment,
+            min_silence_len=100,     # detect silences as short as 100ms
+            silence_thresh=-40       # dBFS threshold — works great for TTS
+        )
+
+        if not chunks:
+            print("DEBUG: No segments found by pydub silence detection.")
+            return []
+
+        
+        # 5. Apply three-tier silence logic with CAPPED padding
+        segments = []
+        current_speaker = 0
+        max_pad_ms = 1000  # Max 1s padding per side (2s total gap)
+
+        first_start, current_end = chunks[0]
+        # Start the first segment (capped at 1s of leading silence if available)
+        current_start = max(0, first_start - max_pad_ms) 
+
+        for i in range(1, len(chunks)):
+            start, end = chunks[i]
+            gap = start - current_end 
+
+
+            if gap < merge_threshold_ms:
+                # Merge: Keeps all silence inside the segment
+                current_end = end
             else:
-                # Same speaker continues: update the end time of the last entry
-                merged_segments[-1]["end"] = r.end
+                # Split/Toggle: Add padding but CAP it
+                # We take half the gap, but never more than 1 second
+                safe_padding = min(gap / 2, max_pad_ms)
+                
+                if include_gap==False:
+                    safe_padding=0
 
-        return segments, merged_segments
+                segments.append({
+                    "start":  float(current_start / 1000.0),
+                    "end":   float((current_end + safe_padding) / 1000.0),
+                    "speaker": current_speaker
+                })
+
+                # Start next segment at 'start' minus the safe padding
+                current_start = start - safe_padding
+                
+                if gap >= split_threshold_ms:
+                    current_speaker = 1 if current_speaker == 0 else 0
+                
+                current_end = end
+
+        # End the last segment (capped at 1s of trailing silence)
+        segments.append({
+            "start":  float(current_start / 1000.0),
+            "end":   float((current_end + max_pad_ms) / 1000.0), # Note: you may want a check if this exceeds file length
+            "speaker": current_speaker
+        })
 
 
 
+        # print(f"[DEBUG] pydub silence detection found {len(segments)} segments")
+        # for i, s in enumerate(segments):
+        #     print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
+        return segments
+    
+    def get_diarization_speakers_from_path(self, audio_path):
+        import soundfile as sf
+        import torch
+        
+        waveform, sample_rate = sf.read(audio_path, dtype='float32')
+        waveform = torch.tensor(waveform).T
+        if waveform.dim() == 1:
+            waveform = waveform.unsqueeze(0)
+        
+        duration = waveform.shape[-1] / sample_rate  # ← calculate duration
+        audio = {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
+        diar = self.get_diarization_speakers_using_silence(audio, False, 500, 800)
+        merge = self.merge_small_consecutive_segments(diar)
+        return  merge , duration  # ← return both
 
+
+    def get_2_speakers(self, diarData):
+        speaker1Segs = []
+        speaker2Segs = []
+
+        for seg in diarData:
+            # If speaker is 0 (or anything other than 1), put in speaker1Segs
+            if seg["speaker"] == 1:
+                speaker2Segs.append(seg)
+            else:
+                # This handles speaker 0 and your fallback for any speaker > 1
+                speaker1Segs.append(seg)
+                
+        return speaker1Segs, speaker2Segs
+
+    def merge_small_consecutive_segments(self, segments, max_duration=10.0):
+        """
+        Merges consecutive segments from the same speaker if they are small (< max_duration).
+        
+        Rules:
+        - Scan for consecutive segments with the same speaker
+        - If a segment is < max_duration, try to merge it with the next segment
+        (same speaker) as long as the combined duration stays < max_duration
+        - Once a merge would exceed max_duration, start a new merged segment
+        
+        Args:
+            segments: List of dicts with 'start', 'end', 'speaker' keys
+            max_duration: Maximum duration in seconds for merging (default: 10.0)
+        
+        Returns:
+            List of merged segment dicts
+        """
+        if not segments:
+            return []
+
+        merged = []
+        current = dict(segments[0])  # copy so we don't mutate the original
+
+        for next_seg in segments[1:]:
+            same_speaker = next_seg['speaker'] == current['speaker']
+            current_duration = current['end'] - current['start']
+            combined_duration = next_seg['end'] - current['start']
+
+            if same_speaker and current_duration < max_duration and combined_duration < max_duration:
+                # Extend the current segment to absorb the next one
+                current['end'] = next_seg['end']
+            else:
+                # Flush current and start fresh
+                merged.append(current)
+                current = dict(next_seg)
+
+        merged.append(current)  # flush the last segment
+        print(f"[DEBUG] Merged pydub silence detection found {len(merged)} segments")
+        for i, s in enumerate(merged):
+            print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
+
+        return merged
+
+
+    def process_segments_for_two_speakers(self, segments):
+        """
+        Process segments and return two strings containing time ranges for each speaker.
+        
+        Args:
+            segments: list of dicts with 'start', 'end', 'speaker' keys
+        
+        Returns:
+            tuple: (Speaker1Tracks, Speaker2Tracks) as strings
+        """
+        if not segments:
+            return "", ""
+
+        # --- Step 1: Discover the two dominant speakers ---
+        speaker_counts = {}
+        for seg in segments:
+            spk = seg["speaker"]
+            speaker_counts[spk] = speaker_counts.get(spk, 0) + 1
+
+        # Sort speakers by frequency; top 2 become Speaker 1 and Speaker 2
+        sorted_speakers = sorted(speaker_counts, key=lambda s: speaker_counts[s], reverse=True)
+        speaker1_id = sorted_speakers[0]
+        speaker2_id = sorted_speakers[1] if len(sorted_speakers) > 1 else None
+
+        # --- Step 2: Assign extra speakers to the nearest Speaker 1 or Speaker 2 ---
+        def resolve_speaker(seg_index):
+            spk = segments[seg_index]["speaker"]
+            if spk == speaker1_id:
+                return 1
+            if spk == speaker2_id:
+                return 2
+
+            # Extra speaker: search outward for the nearest Speaker 1 or 2
+            left, right = seg_index - 1, seg_index + 1
+            while left >= 0 or right < len(segments):
+                if left >= 0:
+                    neighbor = segments[left]["speaker"]
+                    if neighbor == speaker1_id:
+                        return 1
+                    if neighbor == speaker2_id:
+                        return 2
+                    left -= 1
+                if right < len(segments):
+                    neighbor = segments[right]["speaker"]
+                    if neighbor == speaker1_id:
+                        return 1
+                    if neighbor == speaker2_id:
+                        return 2
+                    right += 1
+
+            return 1  # Fallback: assign to Speaker 1
+
+        # --- Step 3: Build the two track strings ---
+        speaker1_parts = []
+        speaker2_parts = []
+
+        for i, seg in enumerate(segments):
+            start = seg["start"]
+            end = seg["end"]
+            assigned = resolve_speaker(i)
+            entry = f"{start:.3f}-{end:.3f}"
+
+            if assigned == 1:
+                speaker1_parts.append(entry)
+            else:
+                speaker2_parts.append(entry)
+
+        Speaker1Tracks = ", ".join(speaker1_parts)
+        Speaker2Tracks = ", ".join(speaker2_parts)
+
+        return Speaker1Tracks, Speaker2Tracks
 
 
 

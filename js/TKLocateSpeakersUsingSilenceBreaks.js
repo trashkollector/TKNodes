@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 
-console.log("[TKAudioDiarizationControl] JS LOADED");
+console.log("[TKLocateSpeakersUsingSilenceBreaks] JS LOADED");
 
 const SLIDER_HEIGHT = 28;
 const TRACK_PADDING = 16;
@@ -13,15 +13,15 @@ const BTN_SIZE = 18;
 const BTN_MARGIN = 6;
 
 // ── Silence block appearance ──────────────────────────────────────────────────
-const SILENCE_COLOR = "rgba(247, 13, 13, 0.55)";   // semi-transparent green fill
-const SILENCE_BORDER = "#e0e7e7";                   // green border
+const SPEAKER_TALK_COLOR = "rgba(247, 13, 13, 0.55)";   // semi-transparent green fill
+const SPEAKER_TALK_BORDER = "#e0e7e7";                   // green border
 const SILENCE_HALF_W_SEC = 0.15;                    // ±0.15s visual half-width around midpoint
 
 app.registerExtension({
-    name: "extTKAudioDiarizationControl",
+    name: "extTKLocateSpeakersUsingSilenceBreaks",
 
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
-        if (nodeData.name !== "TKAudioDiarizationControl") return;
+        if (nodeData.name !== "TKLocateSpeakersUsingSilenceBreaks") return;
 
         const orig = nodeType.prototype.onNodeCreated;
 
@@ -29,9 +29,9 @@ app.registerExtension({
             if (orig) orig.apply(this, arguments);
 
             setTimeout(() => {
-                const NUM_TRACKS = 10;
+                const NUM_TRACKS = 14;
                 const MAX_SPLITS = 20;
-                const MIN_HEIGHT_FORM = 400;
+                const MIN_HEIGHT_FORM = 470;
                 const BTN_ROW_H = 26;
 
 
@@ -50,62 +50,88 @@ app.registerExtension({
                 let numActive = 1;
                 let dragIndex = -1;
                 let dragOffsetX = 0;
-                let transitionTimes = [];   // ← NEW: midpoints in seconds
+                let speakerTimes = [];   // ← start,end,speaker
 
-                const transitionWidget = node.widgets?.find(w => w.name === "transition_times");
+                const transitionWidget = node.widgets?.find(w => w.name === "speaker_times");
                 if (transitionWidget) transitionWidget.hidden = true;
 
                 // ── Geometry helpers ─────────────────────────────────────
                
                 drawButtons(node);
-                 
-                function populateFromTransitions(node, transitions) {
-                    if (!node || !transitions || transitions.length === 0) return;
+                
+                function clearTrackData(node) {
+                    if (!node || !node.widgets) return;
 
-                    // 1. Reset all widgets to 0 first for a clean slate
+                   
                     node.widgets.forEach(w => {
-                        if (w.name?.startsWith("track_")) w.value = 0;
+                        if (w.name?.startsWith("track_start_") || w.name?.startsWith("track_end_")) {
+                            w.value = 0;
+                            // Explicitly trigger the callback so the backend sees the reset
+                            if (w.callback) w.callback.call(node, 0);
+                        }
                     });
 
-                    let lastTime = 0;
-                    const HALF = NUM_TRACKS / 2; // Assuming 5
-
-                    for (let i = 0; i < transitions.length; i++) {
-                        const currentTime = transitions[i];
-
-                        // Calculate which track number we are on (1, 2, 3...)
-                        // Since we use 2 speakers per "step", track index is floor(i/2) + 1
-                        const trackNum = Math.floor(i / 2) + 1;
-
-                        // Stop if we run out of available UI tracks
-                        if (trackNum > HALF) break;
-
-                        // Alternating logic: 
-                        // i = 0, 2, 4... -> Speaker 1 (Start/End i)
-                        // i = 1, 3, 5... -> Speaker 2 (Start/End j)
-                        const isSpeakerOne = (i % 2 === 0);
-
-                        if (isSpeakerOne) {
-                            // Assign to Speaker 1
-                            const startW = node.widgets.find(w => w.name === `track_start_${trackNum}`);
-                            const endW = node.widgets.find(w => w.name === `track_end_${trackNum}`);
-                            if (startW) startW.value = lastTime;
-                            if (endW) endW.value = currentTime;
-                        } else {
-                            // Assign to Speaker 2 (The "j" tracks in your grid)
-                            const trackNumJ = trackNum + HALF;
-                            const startW = node.widgets.find(w => w.name === `track_start_${trackNumJ}`);
-                            const endW = node.widgets.find(w => w.name === `track_end_${trackNumJ}`);
-                            if (startW) startW.value = lastTime;
-                            if (endW) endW.value = currentTime;
-                        }
-
-                        lastTime = currentTime;
+                    // Refresh custom UI drawing
+                    if (typeof drawButtons === "function") {
+                        drawButtons(node);
                     }
 
-                    // 2. Refresh the UI to show the new numbers
-                    drawButtons(node);
+                    // Refresh the ComfyUI canvas
+                    node.setDirtyCanvas(true, true);
+                } 
+             
+                function populateEditBoxesUsingSpeakerTimes(node, segments) {
+                    if (!node || !segments) return;
+
+                    // 1. Call your existing clear function first
+                    clearTrackData(node);
+
+                    // 2. Sort by speaker ID, then by start time (chronological)
+                    const sortedSegments = [...segments].sort((a, b) => {
+                        if (a.speaker !== b.speaker) {
+                            return String(a.speaker).localeCompare(String(b.speaker));
+                        }
+                        return a.start - b.start;
+                    });
+
+                    const MAX_PER_SPEAKER = NUM_TRACKS/2;
+                    let currentSpeaker = null;
+                    let currentCount = 0;
+                    let columnOffset = 0;
+
+                    // 3. Distribute into the correct slots
+                    for (const seg of sortedSegments) {
+                        if (currentSpeaker !== null && String(seg.speaker) !== String(currentSpeaker)) {
+                            columnOffset += MAX_PER_SPEAKER;
+                            currentCount = 0;
+                            if (columnOffset >= NUM_TRACKS) break;
+                        }
+
+                        currentSpeaker = seg.speaker;
+                        currentCount++;
+
+                        if (currentCount <= MAX_PER_SPEAKER) {
+                            const trackNum = columnOffset + currentCount;
+
+                            const sW = node.widgets.find(w => w.name === `track_start_${trackNum}`);
+                            const eW = node.widgets.find(w => w.name === `track_end_${trackNum}`);
+
+                            if (sW) {
+                                sW.value = parseFloat(seg.start || 0);
+                                if (sW.callback) sW.callback.call(node, sW.value);
+                            }
+                            if (eW) {
+                                eW.value = parseFloat(seg.end || 0);
+                                if (eW.callback) eW.callback.call(node, eW.value);
+                            }
+                        }
+                    }
+
+                    if (typeof drawButtons === "function") drawButtons(node);
+                    node.setDirtyCanvas(true, true);
                 }
+
+
 
                 function clearCustomWidgets(node) {
                     if (!node || !node.widgets) return;
@@ -151,9 +177,13 @@ app.registerExtension({
 
                 function drawButtons(node) {
                     if (!node || !node.widgets) return;
+                  
+                    // ← add this guard
+                    if (node.widgets.find(w => w.name === "footer_btns")) {
+                        node.setDirtyCanvas(true, true);
+                        return;
+                    }
 
-   
-                    clearCustomWidgets(node);
 
                     // 1. Create a spacer DIV and make it a flexbox
                     const timelineSpacer = document.createElement("div");
@@ -233,7 +263,7 @@ app.registerExtension({
                     }
 
                     // Build 4-column rows: [start_i, end_i, start_i+HALF, end_i+HALF]
-                    const HALF = NUM_TRACKS / 2; // 5
+                    const HALF = NUM_TRACKS / 2; 
                     for (let i = 1; i <= HALF; i++) {
                         const j = i + HALF;
 
@@ -269,46 +299,94 @@ app.registerExtension({
                         box-sizing: border-box;
                     `;
 
-                    const clearBtn = document.createElement("button");
-                    clearBtn.textContent = "Clear";
-                    clearBtn.style.cssText = `flex: 1; height: 26px; cursor: pointer; background: #442222; color: #fff; border: 1px solid #664444; border-radius: 4px; font-size: 11px;`;
-                    clearBtn.onclick = () => {
-                        // Loop through all track widgets and reset to 0
-                        node.widgets.forEach(w => {
-                            if (w.name?.startsWith("track_start_") || w.name?.startsWith("track_end_")) {
-                                w.value = 0;
-                            }
-                        });
-                        drawButtons(node); // Redraw to update the text boxes
-                    };
+                    // --- CREATE DETECT BUTTON ---
+                    const detectBtn = document.createElement("button");
+                    detectBtn.textContent = "DETECT SPEAKERS - LOAD GRAPH";
+                    detectBtn.style.cssText = `flex: 1; height: 26px; cursor: pointer; background: #224422; color: #fff; border: 1px solid #446644; border-radius: 4px; font-size: 11px;`;
 
-                    const loadBtn = document.createElement("button");
-                    loadBtn.textContent = "Populate edit boxs with Diarization data";
-                    loadBtn.style.cssText = `flex: 2; height: 26px; cursor: pointer; background: #223344; color: #fff; border: 1px solid #334455; border-radius: 4px; font-size: 11px;`;
-                    // 2. Update your button onclick (inside drawButtons)
-                    loadBtn.onclick = () => {
-                        const data = transitionTimes;
+                    detectBtn.onclick = async () => {
+                        let audioPath = null;  // ← add this
+                        console.log("detect button clicked!");  
+                        const fullaudioInput = node.inputs?.find(i => i.name === "fullaudio");
 
-                        if (!data || data.length === 0) {
-                            alert("No diarization data found. Please run the node first.");
+                        if (!fullaudioInput?.link) {
+                            console.error("No Load Audio node connected to fullaudio input!");
+                            alert("Please connect a Load Audio node first!");
                             return;
                         }
 
-                        // 2. Run the population logic
-                        populateFromTransitions(node, data);
+                        const link = app.graph.links[fullaudioInput.link];
+                        const sourceNode = app.graph.getNodeById(link.origin_id);
+                        const audioWidget = sourceNode.widgets?.find(w => w.name === "audio");
+                        audioPath = audioWidget?.value;
+
+                        if (!audioPath) {
+                            console.error("Load Audio node is connected but no file selected!");
+                            alert("Please select an audio file in the Load Audio node!");
+                            return;
+                        }
+
+
+
+                        detectBtn.textContent = "Detecting...";
+                        detectBtn.disabled = true;
+
+                        try {
+                            const response = await fetch('/tk/detect_speakers', {
+                                method: 'POST',
+                                body: JSON.stringify({ audio: audioPath }), // Ensure this is a string
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                            // ... rest of your existing fetch logic ...
+
+                            const data = await response.json();
+
+                            console.log("response status:", response.status);
+                            console.log("response data:", data);
+
+                            if (data.speaker_times) {
+                                if (data.duration) {
+                                    applyDuration(data.duration);
+                                }
+                                node.speakerTimes = data.speaker_times;
+                                populateEditBoxesUsingSpeakerTimes(node, node.speakerTimes);
+                                node.setDirtyCanvas(true, true);
+                            }
+                        } catch (err) {
+                            console.error("Detection failed:", err);
+
+                            detectBtn.textContent = "Detect Speakers";
+                            detectBtn.disabled = false;
+                        } finally {
+                            detectBtn.textContent = "DETECT SPEAKERS - LOAD GRAPH";
+                            detectBtn.disabled = false;
+                        }
+                    };
+
+
+
+
+                    // --- CREATE CLEAR BUTTON ---
+                    const clearBtn = document.createElement("button");
+                    clearBtn.textContent = "Clear";
+                    clearBtn.style.cssText = `flex: 1; height: 26px; cursor: pointer; background: #442222; color: #fff; border: 1px solid #664444; border-radius: 4px; font-size: 11px;`;
+
+                    clearBtn.onclick = async () => {
+                        clearTrackData(node);
+                        node.speakerTimes = [];
                     }
+
+                    // --- APPEND AND ADD WIDGET ---
+                    footerBtnRow.appendChild(detectBtn);
                     footerBtnRow.appendChild(clearBtn);
-                    footerBtnRow.appendChild(loadBtn);
 
-                    node.addDOMWidget("track_footer", "div", footerBtnRow, {
-                        getHeight() { return 40; }
+                    node.addDOMWidget("footer_btns", "div", footerBtnRow, {
+                        getValue() { return null; },
+                        setValue() { },
+                        getHeight() { return 40; },
                     });
+                } // End of drawButtons
 
-                    // 3. FINALLY, set the height
-                    node.setSize([node.size[0], MIN_HEIGHT_FORM]);
-                    node.setDirtyCanvas(true, true);
-
-                }
                 
                 
 
@@ -337,6 +415,38 @@ app.registerExtension({
                 function xToTime(px, trackX, trackW) {
                     return Math.max(0, Math.min(duration, ((px - trackX) / trackW) * duration));
                 }
+                function drawSpeakerSegments(ctx, segments, tx, tw, cy) {
+                    if (!segments || segments.length === 0) return;
+
+                    for (const segment of segments) {
+                        // 1. Calculate positions
+                        const x0 = timeToX(segment.start, tx, tw);
+                        const x1 = timeToX(segment.end, tx, tw);
+
+                        const blockW = Math.max(4, x1 - x0);
+                        const blockH = 18; // slightly taller than the 6px track
+                        const blockY = cy - blockH / 2;
+
+                        // 2. Setup styles
+                        ctx.beginPath();
+                        ctx.roundRect(x0, blockY, blockW, blockH, 2);
+
+                        // Blue for Speaker 0, Green for Speaker 1
+                        ctx.fillStyle = (segment.speaker === 1) ? "#2ecc71" : "#3498db";
+
+                        ctx.globalAlpha = 0.7;
+                        ctx.fill();
+
+                        // 3. Add a subtle border
+                        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+
+                    // Reset alpha so it doesn't affect other drawing
+                    ctx.globalAlpha = 1.0;
+                }
+
 
                 // ── Draw ─────────────────────────────────────────────────
                 const origDraw = nodeType.prototype.onDrawForeground;
@@ -349,7 +459,7 @@ app.registerExtension({
                     // --- FIX STARTS HERE ---
                     const { x: tx, w: tw } = getTrackBounds(this);
                     const ty = 100; // Hard-code this to stay at the top (within your 60-80px padding)
-                    const cy = ty + 10; // Center the slider line
+                    const cy = ty + 30; // Center the slider line
 
                    // --- FIX ENDS HERE ---
 
@@ -363,11 +473,14 @@ app.registerExtension({
 
                     // ── No duration yet ──────────────────────────────────
                     if (duration <= 0) {
-                        ctx.fillStyle = "#000";
-                        ctx.font = `14px sans-serif`;
+                        ctx.fillStyle = "#fff";
+                        ctx.font = `bold 14px sans-serif`;
+                        // ADD THIS LINE
                         ctx.textAlign = "center";
-                        ctx.textBaseline = "middle";
-                        ctx.fillText("--Connect then RUN to load Diarization - Requires clean audio to work perfectly --", tx + tw / 2, cy);
+
+                        // "middle" is usually better than "center" for textBaseline
+                        ctx.textBaseline = "middle"; 
+                        ctx.fillText("-- MAKE SURE AUDIO FOLLOWS RULES --", tx + tw / 2, cy);
                       
                         ctx.restore();
                         return;
@@ -379,24 +492,10 @@ app.registerExtension({
                     ctx.fillStyle = TRACK_BG;
                     ctx.fill();
 
-                    // ── Silence blocks (drawn ON the track, behind thumbs) ──
-                    if (transitionTimes.length > 0) {
-                        for (const midSec of transitionTimes) {
-                            const x0 = timeToX(Math.max(0, midSec - SILENCE_HALF_W_SEC), tx, tw);
-                            const x1 = timeToX(Math.min(duration, midSec + SILENCE_HALF_W_SEC), tx, tw);
-                            const blockW = Math.max(4, x1 - x0);  // at least 4px wide so it's always visible
-                            const blockH = 18;                      // slightly taller than the 6px track
-                            const blockY = cy - blockH / 2;
-
-                            ctx.beginPath();
-                            ctx.roundRect(x0, blockY, blockW, blockH, 2);
-                            ctx.fillStyle = SILENCE_COLOR;
-                            ctx.fill();
-                            ctx.strokeStyle = SILENCE_BORDER;
-                            ctx.lineWidth = 1;
-                            ctx.stroke();
-                        }
-                    }
+                    
+                    // Call our new helper function
+                    // Pass 'this.speakerTimes' so it uses the data we saved
+                    drawSpeakerSegments(ctx, this.speakerTimes, tx, tw, cy);
 
                     // ── Tick marks ───────────────────────────────────────
                     const pxPerSec = tw / duration;
@@ -428,7 +527,7 @@ app.registerExtension({
                     ctx.font = `12px monospace`;
                     ctx.textAlign = "right";
                     ctx.textBaseline = "middle";
-                    ctx.fillText("DURATION: " + duration.toFixed(2) + "s", this.size[0] - TRACK_PADDING, dlCy);
+                    //ctx.fillText("DURATION: " + duration.toFixed(2) + "s", this.size[0] - TRACK_PADDING, dlCy);
                   
 
                     ctx.restore();
@@ -466,28 +565,36 @@ app.registerExtension({
                         applyDuration(parseFloat(Array.isArray(raw) ? raw[0] : raw));
                     }
 
-                    if (message?.transition_times !== undefined) {
-                        const raw = message.transition_times;
-                        console.log("transition_times received:", raw);  // ← ADD THIS
-                        transitionTimes = (Array.isArray(raw) ? raw : [])
-                            .map(v => parseFloat(Array.isArray(v) ? v[0] : v))
-                            .filter(v => !isNaN(v) && v >= 0);
-                        console.log("[TKTransition] transitionTimes after processing:", transitionTimes);  // ← ADD THIS
+                    if (message?.speaker_times !== undefined) {
+                        const raw = message.speaker_times;
+                        console.log("speaker_times received:", raw);
 
-                        console.log("****TRANSITIONS*****");
-                        
-                        node.widgets.forEach(w => {
-                            if (w.name?.startsWith("track_start_") || w.name?.startsWith("track_end_")) {
-                                w.value = 0;
-                            }
-                        });
+                        // ── Fixed Processing Logic ──
+                        // Just ensure it's an array and handle the ComfyUI "wrapped in array" quirk if needed
+                        let data = Array.isArray(raw) ? raw : [];
+
+                        // ComfyUI sometimes wraps the whole payload in another array [ [{...}, {...}] ]
+                        if (data.length > 0 && Array.isArray(data[0])) {
+                            data = data[0];
+                        }
+
+                        // Map the data, ensuring the numbers are parsed but the structure stays
+                        speakerTimes = data.map(seg => ({
+                            start: parseFloat(seg.start),
+                            end: parseFloat(seg.end),
+                            speaker: parseInt(seg.speaker)
+                        })).filter(seg => !isNaN(seg.start) && !isNaN(seg.end));
+
+                        console.log("[TKLocateSpeakers] speakerTimes after processing:", speakerTimes);
+                        console.log("**** GOT SPEAKER TIMES *****");
+
                        
-                        populateFromTransitions(node, transitionTimes);
+                        populateEditBoxesUsingSpeakerTimes(node, speakerTimes);
 
 
                         node.setDirtyCanvas(true, true);
                     } else {
-                        console.log("[TKTransition] transition_times was NOT in message!");  // ← ADD THIS
+                        console.log("[TKLocateSpeakers] speaker_times was NOT in message!");  // ← ADD THIS
                     }
 
                    
@@ -498,12 +605,21 @@ app.registerExtension({
                         applyDuration(parseFloat(Array.isArray(raw) ? raw[0] : raw));
                     }
 
-                    // ← NEW: silence midpoints in seconds
-                    if (message?.transition_times !== undefined) {
-                        const raw = message.transition_times;
-                        transitionTimes = (Array.isArray(raw) ? raw : [])
-                            .map(v => parseFloat(Array.isArray(v) ? v[0] : v))
-                            .filter(v => !isNaN(v) && v >= 0);
+                    // ── Receive speaker segment objects from Python ──
+                    if (message?.speaker_times !== undefined) {
+                        const raw = message.speaker_times;
+
+                        // 1. Map the objects correctly and ensure we have numbers
+                        // 2. Attach it to 'this' so the canvas draw loop can find it
+                        this.speakerTimes = (Array.isArray(raw) ? raw : []).map(seg => ({
+                            start: parseFloat(seg.start),
+                            end: parseFloat(seg.end),
+                            speaker: parseInt(seg.speaker)
+                        })).filter(seg => !isNaN(seg.start) && !isNaN(seg.end));
+
+                        console.log("Speaker Data Processed:", this.speakerTimes);
+
+                        // 3. Trigger a redraw
                         node.setDirtyCanvas(true, true);
                     }
 
