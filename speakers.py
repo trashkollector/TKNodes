@@ -372,7 +372,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
         # 1. Start with the core required fields
         inputs = {
             "required": {
-                "silence_threshold" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 2.0 , "step": 0.1}),
+                "silence_threshold_ms" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 2.0 , "step": 0.1}),
                 "fullaudio": ("AUDIO",),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0}),
                 "track_start_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
@@ -392,69 +392,86 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
     RETURN_TYPES = ("STRING", "STRING", "STRING")
     RETURN_NAMES = ("diarization", "speakersTrackInfo1", "speakersTrackInfo2")
-    FUNCTION = "getSplitTimesByUser"
+    FUNCTION = "calculatTracksBySilence"
     CATEGORY = "TKNodes"
 
-    diar_segments_by_user=[]
-    user_loaded_segments=False
+    autoDiarizationn=[]
+    isAutoDiarization=False
 
     ## Gets the split times defined by User using the Custom Slider Node
     ## Allow up to 20 splits.  The user can add/delete splits as needed to define tracks
     # 3. Use **kwargs to catch all those dynamic track variables
-    def getSplitTimesByUser(self, silence_threshold_ms, fullaudio, duration, speaker_times="[]", **kwargs):
+    def calculatTracksBySilence(self, silence_threshold_ms, fullaudio, duration, speaker_times="[]", **kwargs):
         # Example of how to access the data inside the function:
-       
-        user_defined_tracks = []
-        for i in range(1, 15):
-            # Get the value
-            start = kwargs.get(f"track_start_{i}", 0.0)
-            end = kwargs.get(f"track_end_{i}", 0.0)
-            
-            # FORCE them to be standard floats
-            # .item() handles Tensors, float() handles everything else
-            s_val = start.item() if hasattr(start, "item") else float(start)
-            e_val = end.item() if hasattr(end, "item") else float(end)
-            
-            user_defined_tracks.append((s_val, e_val))
-    
+     
         waveform = fullaudio["waveform"]
         sample_rate = fullaudio["sample_rate"]
         computed_duration = waveform.shape[-1] / sample_rate
 
+        manualDiarization = self.convertEditBoxesToDiarization(**kwargs)
   
-        if self.user_loaded_segments:
-            diarization = self.diar_segments_by_user
+        # AUTO DIARIZATION
+        if self.isAutoDiarization == True:
+            diarization = self.autoDiarizationn
+            print(f"Using segments for auto diarization {diarization} ")
+            speaker_times = diarization
+            (speaker1tracks, speaker2tracks) = self.get_2_speakers(diarization)
+            print(f"Using segments from audio {diarization} " )
+                    
+        # MANUAL DIARIZATION
         else :
-            #diarization = self.get_diarization_speakers_old(fullaudio)  SHERPA
-            
-            # PYDUB silence breaks
-            diarization_raw =  self.get_diarization_speakers_using_silence(fullaudio, True, 500, silence_threshold_ms);   
-
-            # merge consecutive small chunks of same speaker
-            diarization = self.merge_small_consecutive_segments(diarization_raw)
-
- 
-        speaker_times = diarization
-        (speaker1tracks, speaker2tracks) = self.get_2_speakers(diarization)
-        
+            print(f"No Diarization - User manually entered tracks")
+            speaker_times = manualDiarization
+            (speaker1tracks, speaker2tracks) = self.get_2_speakers(manualDiarization)
+            print(f"Using segments from audio {manualDiarization} " )
+                    
         sp1 = self.convert_segments_to_track_string(speaker1tracks)
         sp2 = self.convert_segments_to_track_string(speaker2tracks)
+        self.isAutoDiarization =False
 
         return {
             "ui": {
                 "duration": [computed_duration],
                 "speaker_times": speaker_times ,   # ← this line must be here
-                "user_defined_tracks": user_defined_tracks,  
-             
+           
             },
-            "result": (json.dumps(diarization), sp1,sp2)
+            "result": (json.dumps(speaker_times) , sp1 , sp2)
         }
+
+
+    def convertEditBoxesToDiarization(self, **kwargs):
+        segments = []
+        
+        for i in range(1, 15):
+            start = kwargs.get(f"track_start_{i}", 0.0)
+            end = kwargs.get(f"track_end_{i}", 0.0)
+            
+            if end > start:
+                # We use a dictionary here so seg["speaker"] works later
+                speaker = 0 if i <= 7 else 1
+                segments.append({
+                    "start": start,
+                    "end": end,
+                    "speaker": speaker # This is an integer
+                })
+        
+        # Sort the dictionaries by the 'start' time
+        segments.sort(key=lambda x: x["start"])
+        
+        return segments
+
+
+
+
 
 
     @classmethod  # <--- Add this decorator
     def set_tracks_from_button(cls, segments):
-        segments_by_user = segments
-        user_loaded_segments=True
+        cls.segments_by_user = segments
+
+        cls.isAutoDiarization=True
+
+
 
 
     def convert_segments_to_track_string(self, segments):
@@ -533,53 +550,6 @@ class TKLocateSpeakersUsingSilenceBreaks:
         return transition_times
 
 
-    ## takes a JSON list and converts into tracks used by speakers.
-    def get_speaker_tracks_from_splits(self, split_times_input, total_duration):
-
-        try:
-            # Check if we even need to load JSON
-            if isinstance(split_times_input, list):
-                print("[DEBUG] Input is already a list. Skipping json.loads.")
-                raw_splits = split_times_input
-            else:
-                print("[DEBUG] Input is a string. Attempting json.loads.")
-                import json
-                raw_splits = json.loads(split_times_input)
-                
-            # Clean and Sort
-            splits = sorted([float(t) for t in raw_splits if 0 < float(t) < total_duration])
-            print(f"[DEBUG]  Processed & Sorted splits: {splits}")
-            
-        except Exception as e:
-            print(f"[DEBUG] Error during parsing: {e}")
-            splits = []
-
-        result = []
-        current_start = 0.0
-
-        for split in splits:
-            # Format the segment start
-            result.append(f"{current_start:.3f}")
-            
-            # Create the 'end' by subtracting 0.01 from the split
-            # Rounding to 3 decimals keeps the precision you see in the debug
-            seg_end = round(split - 0.01, 3) 
-            if (seg_end > total_duration):
-                seg_end=total_duration-0.1
-                
-            result.append(f"{seg_end:.3f}")
-            
-            # Update start for the next segment
-            current_start = split
-
-        # Final segment: last split to total duration
-        result.append(f"{current_start:.3f}")
-        result.append(f"{total_duration:.3f}")
-        
-        final_string = ",".join(result)
-        print(f"[DEBUG] Final String: {final_string}\n")
-        
-        return final_string
     
 
     ## takes a list of tracks and separates it so it can be used by two alternating speakers.
@@ -784,7 +754,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
                 # Split/Toggle: Add padding but CAP it
                 # We take half the gap, but never more than 1 second
                 safe_padding = min(gap / 2, max_pad_ms)
-                
+
                 if include_gap==False:
                     safe_padding=0
 
@@ -805,7 +775,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
         # End the last segment (capped at 1s of trailing silence)
         segments.append({
             "start":  float(current_start / 1000.0),
-            "end":   float((current_end + max_pad_ms) / 1000.0), # Note: you may want a check if this exceeds file length
+            "end":   float((current_end) / 1000.0), 
             "speaker": current_speaker
         })
 

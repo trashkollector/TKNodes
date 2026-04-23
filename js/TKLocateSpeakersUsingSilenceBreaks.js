@@ -31,7 +31,7 @@ app.registerExtension({
             setTimeout(() => {
                 const NUM_TRACKS = 14;
                 const MAX_SPLITS = 20;
-                const MIN_HEIGHT_FORM = 470;
+                const MIN_HEIGHT_FORM = 480;
                 const BTN_ROW_H = 26;
 
 
