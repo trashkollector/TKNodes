@@ -5,6 +5,7 @@ import torchaudio
 import json
 from pydub import AudioSegment
 from pydub.silence import detect_silence
+from pydub.silence import detect_nonsilent
 import os
 import sherpa_onnx
 import urllib.request
@@ -26,26 +27,23 @@ async def detect_speakers_endpoint(request):
         audio_name = json_data.get("audio")
         threshold = json_data.get("silence_threshold_ms", 1.0) 
 
-
-
         # 1. Locate the file (assuming it's in ComfyUI's input folder)
         # You may need to adjust this path based on where your audio is stored
-        import folder_paths
+        
         input_dir = folder_paths.get_input_directory()
         audio_path = os.path.join(input_dir, audio_name)
 
         speakerClass = TKLocateSpeakersUsingSilenceBreaks()
-  
 
-        segmentsNoPad, segmentsPad, duration = speakerClass.get_diarization_speakers_in_fn(audio_path, threshold)
+        segmentsNoPad, segmentsPad, duration = speakerClass.get_diarization_speakers_from_audio_file(audio_path, threshold)
     
         speakerClass.save_segments_for_later_use(segmentsNoPad, segmentsPad)  # store for later
 
         return web.json_response({"speaker_times": segmentsNoPad, 
-                                  "duration": duration, "silence_threshold_ms":threshold})
+                                  "duration":  duration, "silence_threshold_ms":threshold})
         
     except Exception as e:
-        print(f"[TK Error] Detection failed: {e}")
+        print(f"[TKDetectSpeakers] Detection failed: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
 
@@ -423,13 +421,13 @@ class TKLocateSpeakersUsingSilenceBreaks:
             diarizationPadded = self.autoSegmentsFromAudioPad
             print(f"Using segments for auto diarization {diarization} ")
             speaker_times = diarization
-            (speaker1tracks, speaker2tracks) = self.get_2_speakers(diarizationPadded)
+            (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(diarizationPadded)
                     
         # MANUAL DIARIZATION
         else :
             print(f"No Diarization - User manually entered tracks")
             speaker_times = manualDiarization
-            (speaker1tracks, speaker2tracks) = self.get_2_speakers(manualDiarization)
+            (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(manualDiarization)
 
                     
         sp1 = self.convert_segments_to_track_string(speaker1tracks)
@@ -696,48 +694,24 @@ class TKLocateSpeakersUsingSilenceBreaks:
         return segments
 
 
-    def get_diarization_speakers_using_silence(self, audio_data,
+    # Emulate diarization by using silence to detect speakers
+    # Need to follow rules and include silence so speakers switch
+    def get_diarization_speakers_using_silence(self, filename,
                                 include_gap,
                                 merge_threshold_ms=500,      # < 0.5s = merge (same segment)
                                 split_threshold_ms=800):     # > 0.8s = new speaker toggle
         
-        waveform = audio_data['waveform']
 
-        # Remove batch dim if present: [1,2,N] → [2,N] or [1,N] → [N]
-        if waveform.dim() == 3:
-            waveform = waveform.squeeze(0)
+        audio = AudioSegment.from_file(filename)
+        if audio.channels > 1:
+            audio = audio.set_channels(1)
+        audio = audio.set_frame_rate(16000)
 
-        # Average stereo to mono: [2,N] → [N]
-        if waveform.dim() == 2:
-            waveform = waveform.mean(dim=0)
-
-        # Now waveform is always [N] ✅
-
-        # 2. Convert to numpy int16 for pydub
-        #audio_np = waveform.detach().cpu().numpy().astype(np.float32)
-        audio_np = waveform.detach().cpu().float().numpy().flatten()
-        print(f"[DEBUG] audio_np shape: {audio_np.shape}")  # should be (2192256,)
-
-
-        # Normalize to int16 range
-        if np.max(np.abs(audio_np)) <= 1.0:
-            audio_int16 = (audio_np * 32767).astype(np.int16)
-        else:
-            audio_int16 = audio_np.astype(np.int16)
-
-        sample_rate = audio_data['sample_rate']
-        # 3. Build pydub AudioSegment from raw numpy data
-        audio_segment = AudioSegment(
-            audio_int16.tobytes(),
-            frame_rate=sample_rate,
-            sample_width=2,   # int16 = 2 bytes
-            channels=1
-        )
+        duration_sec = len(audio) / 1000.0
 
         # 4. Detect non-silent chunks
-        from pydub.silence import detect_nonsilent
         chunks = detect_nonsilent(
-            audio_segment,
+            audio,
             min_silence_len=100,     # detect silences as short as 100ms
             silence_thresh=-40       # dBFS threshold — works great for TTS
         )
@@ -793,36 +767,40 @@ class TKLocateSpeakersUsingSilenceBreaks:
             "speaker": current_speaker
         })
 
-
-
         print(f"[DEBUG] pydub silence detection found {len(segments)} segments")
         for i, s in enumerate(segments):
              print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
-        return segments
-    
-    def get_diarization_speakers_in_fn(self, audio_path, silence_thresh):
-        import soundfile as sf
-        import torch
-        
-        waveform, sample_rate = sf.read(audio_path, dtype='float32')
-        waveform = torch.tensor(waveform).T
-        if waveform.dim() == 1:
-             waveform = waveform.squeeze(0).mean(dim=0)
-        
-        duration = waveform.shape[-1] / sample_rate  # ← calculate duration
-        audio = {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
 
-        diarNoPad = self.get_diarization_speakers_using_silence(audio, False, 500, silence_thresh)
-        diarPad = self.get_diarization_speakers_using_silence(audio, True, 500, silence_thresh)
+
+        return (segments , duration_sec)
+    
+
+    
+
+    def load_audio_as_mono(self, filename: str) -> AudioSegment:
+        """Load an audio file and convert it to mono for use with pydub."""
+        audio = AudioSegment.from_file(filename)
+        if audio.channels > 1:
+            audio = audio.set_channels(1)
+        return audio
+    
+    def get_diarization_speakers_from_audio_file(self, audio_path, silence_thresh):
+
+        (diarNoPad, duration) = self.get_diarization_speakers_using_silence(audio_path, False, 500, silence_thresh)
+        (diarPad, duration) = self.get_diarization_speakers_using_silence(audio_path, True, 500, silence_thresh)
+
+        # if same speaker speaks for short time, merge those segments together
         mergeNoPad = self.merge_small_consecutive_segments(diarNoPad)
         mergePad = self.merge_small_consecutive_segments(diarPad)
 
         # Derive duration from segments instead of waveform
   
-        return  mergeNoPad, mergeNoPad , duration  # ← return both
+        return  mergeNoPad, mergePad, duration 
+    
 
 
-    def get_2_speakers(self, diarData):
+    # take speaker diarization data and creater profile for 2 users only
+    def extact_2_speakers_from_diarization(self, diarData):
         speaker1Segs = []
         speaker2Segs = []
 
@@ -835,6 +813,9 @@ class TKLocateSpeakersUsingSilenceBreaks:
                 speaker1Segs.append(seg)
                 
         return speaker1Segs, speaker2Segs
+    
+
+
 
     def merge_small_consecutive_segments(self, segments, max_duration=10.0):
         """
@@ -873,9 +854,10 @@ class TKLocateSpeakersUsingSilenceBreaks:
                 current = dict(next_seg)
 
         merged.append(current)  # flush the last segment
-        print(f"[DEBUG] Merged pydub silence detection found {len(merged)} segments")
-        for i, s in enumerate(merged):
-            print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
+
+        # print(f"[DEBUG] Merged pydub silence detection found {len(merged)} segments")
+        # for i, s in enumerate(merged):
+        #     print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
 
         return merged
 

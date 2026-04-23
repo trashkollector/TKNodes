@@ -301,7 +301,7 @@ app.registerExtension({
 
                     // --- CREATE DETECT BUTTON ---
                     const detectBtn = document.createElement("button");
-                    detectBtn.textContent = "DETECT SPEAKERS - LOAD GRAPH";
+                    detectBtn.textContent = "DETECT SPEAKERS - FROM AUDIO FILE";
                     detectBtn.style.cssText = `flex: 1; height: 26px; cursor: pointer; background: #224422; color: #fff; border: 1px solid #446644; border-radius: 4px; font-size: 11px;`;
 
                     detectBtn.onclick = async () => {
@@ -332,12 +332,17 @@ app.registerExtension({
                         detectBtn.disabled = true;
 
                         try {
+                            // 1. First, find the widget's current value from the node
+                            const thresholdWidget = node.widgets.find(w => w.name === "silence_threshold_ms");
+                            const currentThreshold = thresholdWidget ? thresholdWidget.value : 1.0; // Fallback to 1.0 if not found
+
                             const response = await fetch('/tk/detect_speakers', {
                                 method: 'POST',
-                                body: JSON.stringify({ audio: audioPath }), // Ensure this is a string
+                                body: JSON.stringify({ audio: audioPath, silence_threshold_ms: currentThreshold }), 
+                                // Ensure this is a string
                                 headers: { 'Content-Type': 'application/json' }
                             });
-                            // ... rest of your existing fetch logic ...
+                         
 
                             const data = await response.json();
 
