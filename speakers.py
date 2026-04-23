@@ -14,6 +14,7 @@ from server import PromptServer
 from aiohttp import web
 
 
+
 @PromptServer.instance.routes.post("/tk/detect_speakers")
 async def detect_speakers_endpoint(request):
     try:
@@ -34,7 +35,7 @@ async def detect_speakers_endpoint(request):
 
         segments, duration = speakerClass.get_diarization_speakers_from_path(audio_path)
         mergedSegs = speakerClass.merge_small_consecutive_segments(segments)
-        speakerClass.set_tracks_from_button(mergedSegs)  # store for later
+        speakerClass.save_segments_for_later_use(mergedSegs)  # store for later
 
         return web.json_response({"speaker_times": mergedSegs, "duration": duration})
         
@@ -395,7 +396,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
     FUNCTION = "calculatTracksBySilence"
     CATEGORY = "TKNodes"
 
-    autoDiarizationn=[]
+    autoSegmentsFromAudio=[]
     isAutoDiarization=False
 
     ## Gets the split times defined by User using the Custom Slider Node
@@ -412,18 +413,17 @@ class TKLocateSpeakersUsingSilenceBreaks:
   
         # AUTO DIARIZATION
         if self.isAutoDiarization == True:
-            diarization = self.autoDiarizationn
+            diarization = self.autoSegmentsFromAudio
             print(f"Using segments for auto diarization {diarization} ")
             speaker_times = diarization
             (speaker1tracks, speaker2tracks) = self.get_2_speakers(diarization)
-            print(f"Using segments from audio {diarization} " )
                     
         # MANUAL DIARIZATION
         else :
             print(f"No Diarization - User manually entered tracks")
             speaker_times = manualDiarization
             (speaker1tracks, speaker2tracks) = self.get_2_speakers(manualDiarization)
-            print(f"Using segments from audio {manualDiarization} " )
+
                     
         sp1 = self.convert_segments_to_track_string(speaker1tracks)
         sp2 = self.convert_segments_to_track_string(speaker2tracks)
@@ -466,8 +466,9 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
 
     @classmethod  # <--- Add this decorator
-    def set_tracks_from_button(cls, segments):
-        cls.segments_by_user = segments
+    def save_segments_for_later_use(cls, segments):
+        cls.autoSegmentsFromAudio = segments.copy() 
+        print(f"saved seg {segments}")
 
         cls.isAutoDiarization=True
 
