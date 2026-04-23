@@ -58,7 +58,29 @@ app.registerExtension({
                 // ── Geometry helpers ─────────────────────────────────────
                
                 drawButtons(node);
-                
+
+              
+
+                const callbackTrackDataChanged = (node) => {
+                    const stateWidget = node.widgets.find(w => w.name === "track_state");
+
+                    node.widgets.forEach(w => {
+                        if (w.name?.startsWith("track_start_") || w.name?.startsWith("track_end_")) {
+                            const oldCallback = w.callback;
+                            w.callback = function (value) {
+                                if (oldCallback) oldCallback.apply(this, arguments);
+
+                                // Set the flag to dirty
+                                if (stateWidget) stateWidget.value = "DataChange";
+                                console.log("State set to: DataChange");
+                            };
+                        }
+                    });
+                };
+
+                // Initialize the change listeners
+                callbackTrackDataChanged(this);
+
                 function clearTrackData(node) {
                     if (!node || !node.widgets) return;
 
@@ -333,12 +355,12 @@ app.registerExtension({
 
                         try {
                             // 1. First, find the widget's current value from the node
-                            const thresholdWidget = node.widgets.find(w => w.name === "silence_threshold_ms");
+                            const thresholdWidget = node.widgets.find(w => w.name === "silence_threshold");
                             const currentThreshold = thresholdWidget ? thresholdWidget.value : 1.0; // Fallback to 1.0 if not found
 
                             const response = await fetch('/tk/detect_speakers', {
                                 method: 'POST',
-                                body: JSON.stringify({ audio: audioPath, silence_threshold_ms: currentThreshold }), 
+                                body: JSON.stringify({ audio: audioPath, silence_threshold: currentThreshold }), 
                                 // Ensure this is a string
                                 headers: { 'Content-Type': 'application/json' }
                             });
@@ -651,7 +673,7 @@ app.registerExtension({
 
                 node.setDirtyCanvas(true, true);
 
-            }, 0); // set timeout
+            },10); // set timeout
         }; // onNodCreated
     } // beforeRegistered
 });

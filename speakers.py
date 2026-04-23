@@ -15,20 +15,16 @@ from server import PromptServer
 from aiohttp import web
 
 
-
+# HTTP Endpoint for scanning the audio file finding speakers and presenting in custom node
+# calls PyDub for silence breaks
 @PromptServer.instance.routes.post("/tk/detect_speakers")
 async def detect_speakers_endpoint(request):
     try:
-        print("🔍 detect_speakers endpoint hit!")  # ← add this
+        print("🔍 Detect Speakers in Audio File Http endpoint hit!")  # ← add this
         json_data = await request.json()
 
-        print("audio file:", json_data.get("audio"))
-
         audio_name = json_data.get("audio")
-        threshold = json_data.get("silence_threshold_ms", 1.0) 
-
-        # 1. Locate the file (assuming it's in ComfyUI's input folder)
-        # You may need to adjust this path based on where your audio is stored
+        threshold = json_data.get("silence_threshold", 1.0) 
         
         input_dir = folder_paths.get_input_directory()
         audio_path = os.path.join(input_dir, audio_name)
@@ -40,14 +36,21 @@ async def detect_speakers_endpoint(request):
         speakerClass.save_segments_for_later_use(segmentsNoPad, segmentsPad)  # store for later
 
         return web.json_response({"speaker_times": segmentsNoPad, 
-                                  "duration":  duration, "silence_threshold_ms":threshold})
+                                  "duration":  duration, "silence_threshold":threshold})
         
     except Exception as e:
         print(f"[TKDetectSpeakers] Detection failed: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
 
-
+@PromptServer.instance.routes.post("/tk/notify_change")
+async def handle_change(request):
+    data = await request.json()
+    # "Tweak" your data or logic here in real-time
+    print(f"User changed node {data['node_id']} value to {data['value']}")
+    
+    # You can return data back to JS if needed
+    return web.json_response({"status": "received", "tweak": "applied"})
 
 
 
@@ -376,7 +379,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
         # 1. Start with the core required fields
         inputs = {
             "required": {
-                "silence_threshold_ms" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 2.0 , "step": 0.1}),
+                "silence_threshold" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 2.0 , "step": 0.1}),
                 "fullaudio": ("AUDIO",),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0}),
                 "track_start_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
@@ -384,6 +387,10 @@ class TKLocateSpeakersUsingSilenceBreaks:
             },
             "optional": {
                 "speaker_times": ("STRING", {"default": "[]", "hidden":True}),
+            },
+            "hidden": {
+                # This is never visible in the UI but passed to execute()
+                "track_state": ("STRING", {"default": "DataUnchanged"}),
             }
         }
         
@@ -398,15 +405,15 @@ class TKLocateSpeakersUsingSilenceBreaks:
     RETURN_NAMES = ("diarization", "speakersTrackInfo1", "speakersTrackInfo2")
     FUNCTION = "calculatTracksBySilence"
     CATEGORY = "TKNodes"
+    DESCRIPTION = "This node locates speakers in an Audio file base on silence breaks.  Priarily this is use with AI generated audo.  Make sure you put breaks in audioi file for this to work.  Use the threshold to determine how much silence to insert"
 
     autoSegmentsFromAudioNoPad=[]
     autoSegmentsFromAudioPad=[]
     isAutoDiarization=False
 
-    ## Gets the split times defined by User using the Custom Slider Node
-    ## Allow up to 20 splits.  The user can add/delete splits as needed to define tracks
-    # 3. Use **kwargs to catch all those dynamic track variables
-    def calculatTracksBySilence(self, silence_threshold_ms, fullaudio, duration, speaker_times="[]", **kwargs):
+   # Emulate diarization by using silence as breaks for speakers.
+    def calculatTracksBySilence(self, silence_threshold, fullaudio, duration, speaker_times="[]",
+                                track_state="DataUnchanged", **kwargs):
         # Example of how to access the data inside the function:
      
         waveform = fullaudio["waveform"]
@@ -415,30 +422,31 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
         manualDiarization = self.convertEditBoxesToDiarization(**kwargs)
   
+       
+        # USER ENTERED DATA TO OVERRIDE AUTO
+        if track_state == "DataChange": 
+            # MANUAL DIARIZATION
+            print(f"*** User manually entered tracks ***")
+            speaker_times = manualDiarization
+            (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(manualDiarization)
+
         # AUTO DIARIZATION
-        if self.isAutoDiarization == True:
-            diarization = self.autoSegmentsFromAudioNoPad
+        else :
+            diarization       = self.autoSegmentsFromAudioNoPad
             diarizationPadded = self.autoSegmentsFromAudioPad
             print(f"Using segments for auto diarization {diarization} ")
             speaker_times = diarization
             (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(diarizationPadded)
                     
-        # MANUAL DIARIZATION
-        else :
-            print(f"No Diarization - User manually entered tracks")
-            speaker_times = manualDiarization
-            (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(manualDiarization)
-
-                    
         sp1 = self.convert_segments_to_track_string(speaker1tracks)
         sp2 = self.convert_segments_to_track_string(speaker2tracks)
-        self.isAutoDiarization =False
+
+
 
         return {
             "ui": {
                 "duration": [computed_duration],
-                "speaker_times": speaker_times ,   # ← this line must be here
-           
+                "speaker_times": speaker_times , 
             },
             "result": (json.dumps(speaker_times) , sp1 , sp2)
         }
@@ -470,10 +478,10 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
     @classmethod  # <--- Add this decorator
     def save_segments_for_later_use(cls, segmentsNoPad, segmentsPad):
-        cls.autoSegmentsFromAudioNoPad = segmentsNoPad.copy() 
-        cls.autoSegmentsFromAudioPad = segmentsPad.copy() 
 
-        cls.isAutoDiarization=True
+        cls.autoSegmentsFromAudioNoPad = segmentsNoPad.copy() 
+
+        cls.autoSegmentsFromAudioPad = segmentsPad.copy() 
 
 
 
@@ -767,9 +775,10 @@ class TKLocateSpeakersUsingSilenceBreaks:
             "speaker": current_speaker
         })
 
-        print(f"[DEBUG] pydub silence detection found {len(segments)} segments")
-        for i, s in enumerate(segments):
-             print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
+        if not include_gap:
+            print(f"[DEBUG] pydub silence detection found {len(segments)} segments")
+            for i, s in enumerate(segments):
+                print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
 
 
         return (segments , duration_sec)
