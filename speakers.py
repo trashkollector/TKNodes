@@ -25,32 +25,82 @@ async def detect_speakers_endpoint(request):
 
         audio_name = json_data.get("audio")
         threshold = json_data.get("silence_threshold", 1.0) 
+        print(f"silence thres {threshold}")
+        # Convert seconds to milliseconds
+        threshold_ms = int(threshold * 1000) 
         
         input_dir = folder_paths.get_input_directory()
         audio_path = os.path.join(input_dir, audio_name)
 
         speakerClass = TKLocateSpeakersUsingSilenceBreaks()
 
-        segmentsNoPad, segmentsPad, duration = speakerClass.get_diarization_speakers_from_audio_file(audio_path, threshold)
+        segments, duration = speakerClass.get_diarization_speakers_from_audio_file(audio_path, threshold_ms)
     
-        speakerClass.save_segments_for_later_use(segmentsNoPad, segmentsPad)  # store for later
+        speakerClass.save_segments_for_later_use(segments)  # store for later
 
-        return web.json_response({"speaker_times": segmentsNoPad, 
-                                  "duration":  duration, "silence_threshold":threshold})
+        return web.json_response({"speaker_times": segments, 
+                                  "duration":  duration, "silence_threshold":threshold_ms})
         
     except Exception as e:
         print(f"[TKDetectSpeakers] Detection failed: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
 
-@PromptServer.instance.routes.post("/tk/notify_change")
-async def handle_change(request):
-    data = await request.json()
-    # "Tweak" your data or logic here in real-time
-    print(f"User changed node {data['node_id']} value to {data['value']}")
-    
-    # You can return data back to JS if needed
-    return web.json_response({"status": "received", "tweak": "applied"})
+
+
+
+class TKTrimAudioWithBooleans:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "fullaudio": ("AUDIO",),
+
+            },
+            "optional": {
+                "shouldTrimStart": ("BOOLEAN", {"default": False}),
+                "trimStartMs": ("INT", {"default": 0, "min": 0, "max": 1000, "step": 100}),
+                "shouldTrimEnd": ("BOOLEAN", {"default": False}),
+                "trimEndMs": ("INT", {"default": 0, "min": 0, "max": 1000, "step": 100}),
+            }
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("trimmedAudio",)
+    FUNCTION = "trimAudio"
+    CATEGORY = "TKNodes"
+    DESCRIPTION = "Trim audio with Booleans"
+
+    def trimAudio(self, fullaudio, shouldTrimStart, trimStartMs, shouldTrimEnd, trimEndMs):
+        waveform = fullaudio["waveform"]  # shape: [batch, channels, samples]
+        sample_rate = fullaudio["sample_rate"]
+
+        total_samples = waveform.shape[-1]
+
+        # Convert ms to sample counts
+        start_trim_samples = int((trimStartMs / 1000.0) * sample_rate) if shouldTrimStart else 0
+        end_trim_samples   = int((trimEndMs   / 1000.0) * sample_rate) if shouldTrimEnd   else 0
+
+        # Clamp so we never trim more than the total audio length
+        start_trim_samples = min(start_trim_samples, total_samples)
+        end_trim_samples   = min(end_trim_samples,   total_samples - start_trim_samples)
+
+        # Calculate slice indices
+        start_idx = start_trim_samples
+        end_idx   = total_samples - end_trim_samples
+
+        # Guard: if nothing would remain, return silence of 1 sample
+        if end_idx <= start_idx:
+            trimmed = torch.zeros(
+                (waveform.shape[0], waveform.shape[1], 1),
+                device=waveform.device,
+                dtype=waveform.dtype
+            )
+        else:
+            trimmed = waveform[:, :, start_idx:end_idx]
+
+        return ({"waveform": trimmed, "sample_rate": sample_rate},)
+
 
 
 
@@ -58,7 +108,7 @@ async def handle_change(request):
 
 # This node extracts all the track info enterd by the user  and then sorts them and combines 
 # them so it can subsequentally loop thru them in the workflow"
-
+# Extract nth Audio Track Node
 class TKSpeakerAudioTrackExtractor:
     @classmethod
     def INPUT_TYPES(s):
@@ -75,8 +125,8 @@ class TKSpeakerAudioTrackExtractor:
             }
         }
 
-    RETURN_TYPES = ("AUDIO",        "INT"  ,        "INT"      ,"INT")
-    RETURN_NAMES = ("audioTrack","totalTracks", "numFrames" , "speakerNum")
+    RETURN_TYPES = ("AUDIO",        "INT"  ,        "INT"      ,"INT"       ,      "INT" ,         "INT")
+    RETURN_NAMES = ("audioTrack","totalTracks", "numFrames" , "speakerNum"   , "front_pad_ms", "end_pad_ms")
     FUNCTION = "extractSpeakerTrackAudio"
     CATEGORY = "TKNodes"
     DESCRIPTION ="This node extracts all the track info enterd by the user  and then sorts them and combines them so it can subsequentally loop thru them in the workflow"
@@ -126,10 +176,8 @@ class TKSpeakerAudioTrackExtractor:
         print(f"start_idx={start_idx}, end_idx={end_idx}")
 
         # Helper: load the pad audio asset, resample if needed, and trim/tile to exact sample count
-        def load_pad_audio(target_samples, device, dtype):
-            import torchaudio
-            import os
-
+        def load_breather_pad_file(target_samples, device, dtype):
+  
             asset_path = os.path.join(os.path.dirname(__file__), "assets", "breather.wav")
             pad_waveform, pad_sr = torchaudio.load(asset_path, backend="soundfile")
 
@@ -149,51 +197,49 @@ class TKSpeakerAudioTrackExtractor:
 
             return pad_waveform.unsqueeze(0).to(device=device, dtype=dtype)
 
-        # pad with leading and trailing asset audio
+        # pad audio withe silence and/or breath
+        
+        front_pad_ms=0
+        end_pad_ms=0
+
+        extraFrames=0
         if (padAudioForLtx):
-            import torchaudio
-            import os
 
-            if addBreathNoise:
-                # Load breather once to get its exact sample count
-                asset_path = os.path.join(os.path.dirname(__file__), "assets", "breather.wav")
-                _breather, _breather_sr = torchaudio.load(asset_path, backend="soundfile")
-                if _breather_sr != sample_rate:
-                    _breather = torchaudio.transforms.Resample(orig_freq=_breather_sr, new_freq=sample_rate)(_breather)
-
-                # Match channel count
-                target_channels = waveform.shape[1]
-                if _breather.shape[0] < target_channels:
-                    _breather = _breather.expand(target_channels, -1)
-                elif _breather.shape[0] > target_channels:
-                    _breather = _breather[:target_channels, :]
-
-                # Add batch dim [batch, channels, samples]
-                leading_pad = _breather.unsqueeze(0).to(device=waveform.device, dtype=waveform.dtype)
-            else : # we are not using breather noise, we are going to use 1 second of silence instead
-                # Create 1 second of zeros: [batch, channels, sample_rate]
-                batch_size = waveform.shape[0]
-                target_channels = waveform.shape[1]
-                num_samples = sample_rate # 1 second = sample_rate
-                
-                leading_pad = torch.zeros(
-                    (batch_size, target_channels, num_samples), 
-                    device=waveform.device, 
-                    dtype=waveform.dtype
-                )
-
-            # Get speech waveform
+            # Get speech waveform first (used in both branches)
             new_waveform = waveform[:, :, start_idx:end_idx]
 
-            # Prepend breath only
-            final_waveform = torch.cat([leading_pad, new_waveform], dim=-1)
+            batch_size = waveform.shape[0]
+            target_channels = waveform.shape[1]
 
-        else:
-            
+            # Create 500ms of silence: [batch, channels, sample_rate // 2]
+            half_second_samples = sample_rate // 2
+            silence_500ms = torch.zeros(
+                (batch_size, target_channels, half_second_samples),
+                device=waveform.device,
+                dtype=waveform.dtype
+            )
+
+            if addBreathNoise:
+                extra_frames = 25 + 13
+                front_pad_ms=1000  # specify ammount to be deleted later.
+
+                #  breather +500ms silence + original audio + 500ms silence
+                breather_pad = load_breather_pad_file(sample_rate, waveform.device, waveform.dtype)
+                final_waveform = torch.cat([breather_pad, new_waveform, silence_500ms], dim=-1)
+
+            else:
+                extra_frames =13
+                front_pad_ms=0
+
+                # No breather noise -         original audio + 500ms silence
+                final_waveform = torch.cat([new_waveform, silence_500ms], dim=-1)
+
+
+        else:  # USER SELECTED 0 PADDING!
+
             final_waveform = waveform[:, :, start_idx:end_idx]
             new_waveform = final_waveform
-
-
+                
 
         print(
             f"Get Track - INDEX {index}: start={start_time}, end={end_time}, "
@@ -206,14 +252,18 @@ class TKSpeakerAudioTrackExtractor:
             if (last_time_stamp - max_duration > 0.1):
                raise ValueError(f" ERROR: Your timings exceeds the Audio Length - Fix your inputs - size {last_time_stamp} > {max_duration} seconds")
 
-        nFrames = int(round((end_time - start_time) * 25) + 25)
+
+        nFrames = int(round((end_time - start_time) * 25) + extra_frames)
 
         # Force all numeric outputs to pure integers
         return (
             {"waveform": final_waveform, "sample_rate": sample_rate},
             int(totalTracks),
             int(nFrames),
-            int(speakerNum)
+            int(speakerNum),
+            int(front_pad_ms),
+            int(end_pad_ms),
+        
         )
 
 
@@ -303,7 +353,7 @@ class TKSpeakerAudioTrackExtractor:
 
 
 
-
+# Given the Speaker, select the appropriate PROMPT and START IMAGE. since they alternate we need this
 class TKSpeakerDataFromTrack:
     @classmethod
     def INPUT_TYPES(s):
@@ -322,7 +372,7 @@ class TKSpeakerDataFromTrack:
     RETURN_NAMES = ("selectedImage", "selectedText", "currentIndex")
     FUNCTION = "select_data"
     CATEGORY = "TKNodes"
-    DESCRIPTION ="Given the Speaker,, select the appropriate PROMPT and START IMAGE. since they alternate we need this"
+    DESCRIPTION ="Given the Speaker, select the appropriate PROMPT and START IMAGE. since they alternate we need this"
 
     def select_data(self, trackIndex, speakerNum, image1, prompt1, image2, prompt2):
         # 1. Logic to pick based on the speakerNum provided by your extractor
@@ -339,7 +389,7 @@ class TKSpeakerDataFromTrack:
 
 
 
-
+# Get the total talks tracks between the 2 Speakers"
 class TKTotalTracksInAudio:
     @classmethod
     def INPUT_TYPES(s):
@@ -371,7 +421,10 @@ class TKTotalTracksInAudio:
 
 
 
-
+# This node locates speakers in an Audio file base on silence breaks.  Priarily this is use with AI generated audo.  
+# Make sure you put breaks in audioi file for this to work. 
+#  Use the threshold to determine how much silence to insert
+   
 
 class TKLocateSpeakersUsingSilenceBreaks:
     @classmethod
@@ -379,7 +432,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
         # 1. Start with the core required fields
         inputs = {
             "required": {
-                "silence_threshold" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 2.0 , "step": 0.1}),
+                "silence_threshold" : ("FLOAT", {"default": 1.0, "min": 0.2, "max": 4.0 , "step": 0.01}),
                 "fullaudio": ("AUDIO",),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0}),
                 "track_start_1": ("FLOAT", {"default": 0.0,  "max": 500.0, "hidden":True}),
@@ -387,11 +440,10 @@ class TKLocateSpeakersUsingSilenceBreaks:
             },
             "optional": {
                 "speaker_times": ("STRING", {"default": "[]", "hidden":True}),
+                  # This is never visible in the UI but passed to execute()
+                "track_state": ("STRING", {"default": "DataUnchanged", "hidden":True}),
             },
-            "hidden": {
-                # This is never visible in the UI but passed to execute()
-                "track_state": ("STRING", {"default": "DataUnchanged"}),
-            }
+
         }
         
         # 2. Dynamically add tracks 2 through 14 to "optional"
@@ -406,10 +458,8 @@ class TKLocateSpeakersUsingSilenceBreaks:
     FUNCTION = "calculatTracksBySilence"
     CATEGORY = "TKNodes"
     DESCRIPTION = "This node locates speakers in an Audio file base on silence breaks.  Priarily this is use with AI generated audo.  Make sure you put breaks in audioi file for this to work.  Use the threshold to determine how much silence to insert"
-
-    autoSegmentsFromAudioNoPad=[]
-    autoSegmentsFromAudioPad=[]
-    isAutoDiarization=False
+   
+    autoSegmentsFromAudio=[]
 
    # Emulate diarization by using silence as breaks for speakers.
     def calculatTracksBySilence(self, silence_threshold, fullaudio, duration, speaker_times="[]",
@@ -426,17 +476,17 @@ class TKLocateSpeakersUsingSilenceBreaks:
         # USER ENTERED DATA TO OVERRIDE AUTO
         if track_state == "DataChange": 
             # MANUAL DIARIZATION
-            print(f"*** User manually entered tracks ***")
+            print(f"*** DATA CHANGE - User manually entered tracks ***")
             speaker_times = manualDiarization
             (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(manualDiarization)
 
         # AUTO DIARIZATION
         else :
-            diarization       = self.autoSegmentsFromAudioNoPad
-            diarizationPadded = self.autoSegmentsFromAudioPad
-            print(f"Using segments for auto diarization {diarization} ")
+            diarization       = self.autoSegmentsFromAudio
+
+            print(f"**** Using AUTO Segments ")
             speaker_times = diarization
-            (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(diarizationPadded)
+            (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(diarization)
                     
         sp1 = self.convert_segments_to_track_string(speaker1tracks)
         sp2 = self.convert_segments_to_track_string(speaker2tracks)
@@ -452,6 +502,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
         }
 
 
+    # build out diarization list using edit boxes entered by user
     def convertEditBoxesToDiarization(self, **kwargs):
         segments = []
         
@@ -477,11 +528,9 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
 
     @classmethod  # <--- Add this decorator
-    def save_segments_for_later_use(cls, segmentsNoPad, segmentsPad):
+    def save_segments_for_later_use(cls, segments):
 
-        cls.autoSegmentsFromAudioNoPad = segmentsNoPad.copy() 
-
-        cls.autoSegmentsFromAudioPad = segmentsPad.copy() 
+        cls.autoSegmentsFromAudio = segments.copy() 
 
 
 
@@ -704,11 +753,9 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
     # Emulate diarization by using silence to detect speakers
     # Need to follow rules and include silence so speakers switch
-    def get_diarization_speakers_using_silence(self, filename,
-                                include_gap,
-                                merge_threshold_ms=500,      # < 0.5s = merge (same segment)
-                                split_threshold_ms=800):     # > 0.8s = new speaker toggle
-        
+    def get_diarization_speakers_using_silence(self, filename, split_threshold_ms=800):
+        # This now only uses one threshold to decide when to toggle speakers
+        print(f"DEBUG: Processing with split_threshold {split_threshold_ms}ms")
 
         audio = AudioSegment.from_file(filename)
         if audio.channels > 1:
@@ -717,72 +764,82 @@ class TKLocateSpeakersUsingSilenceBreaks:
 
         duration_sec = len(audio) / 1000.0
 
-        # 4. Detect non-silent chunks
+        # Detect non-silent chunks based on pydub's sensitivity
         chunks = detect_nonsilent(
             audio,
-            min_silence_len=100,     # detect silences as short as 100ms
-            silence_thresh=-40       # dBFS threshold — works great for TTS
+            min_silence_len=100,     
+            silence_thresh=-40       
         )
 
         if not chunks:
-            print("DEBUG: No segments found by pydub silence detection.")
-            return []
+            print("DEBUG: No segments found.")
+            return [], duration_sec
 
-        
-        # 5. Apply three-tier silence logic with CAPPED padding
         segments = []
         current_speaker = 0
-        max_pad_ms = 1000  # Max 1s padding per side (2s total gap)
-
-        first_start, current_end = chunks[0]
-        # Start the first segment (capped at 1s of leading silence if available)
-        current_start = max(0, first_start - max_pad_ms) 
+        
+        # Initialize first chunk
+        current_start, current_end = chunks[0]
 
         for i in range(1, len(chunks)):
-            start, end = chunks[i]
-            gap = start - current_end 
+            next_start, next_end = chunks[i]
+            gap = next_start - current_end 
 
+            # ALWAYS end the segment when a gap is found
+            segments.append({
+                "start": float(current_start / 1000.0),
+                "end":   float(current_end / 1000.0),
+                "speaker": current_speaker
+            })
 
-            if gap < merge_threshold_ms:
-                # Merge: Keeps all silence inside the segment
-                current_end = end
-            else:
-                # Split/Toggle: Add padding but CAP it
-                # We take half the gap, but never more than 1 second
-                safe_padding = min(gap / 2, max_pad_ms)
+            # Check if the gap was long enough to switch speakers
+            if gap >= split_threshold_ms:
+                current_speaker = 1 if current_speaker == 0 else 0
+            
+            # Start the next segment
+            current_start = next_start
+            current_end = next_end
 
-                if include_gap==False:
-                    safe_padding=0
-
-                segments.append({
-                    "start":  float(current_start / 1000.0),
-                    "end":   float((current_end + safe_padding) / 1000.0),
-                    "speaker": current_speaker
-                })
-
-                # Start next segment at 'start' minus the safe padding
-                current_start = start - safe_padding
-                
-                if gap >= split_threshold_ms:
-                    current_speaker = 1 if current_speaker == 0 else 0
-                
-                current_end = end
-
-        # End the last segment (capped at 1s of trailing silence)
+        # Append the final chunk
         segments.append({
-            "start":  float(current_start / 1000.0),
-            "end":   float((current_end) / 1000.0), 
+            "start": float(current_start / 1000.0),
+            "end":   float(current_end / 1000.0),
             "speaker": current_speaker
         })
 
-        if not include_gap:
-            print(f"[DEBUG] pydub silence detection found {len(segments)} segments")
-            for i, s in enumerate(segments):
-                print(f"  [{i}] start={s['start']:.3f}  end={s['end']:.3f}  speaker={s['speaker']}")
+        return segments, duration_sec
 
-
-        return (segments , duration_sec)
     
+    def merge_diarization_segments(self, segments, max_duration_sec=10.0):
+        if not segments:
+            return []
+
+        merged = []
+        # Start with the first segment as our "working" block
+        current_group = segments[0].copy()
+
+        for i in range(1, len(segments)):
+            next_seg = segments[i]
+            
+            # Calculate what the duration would be if we merged them
+            potential_duration = next_seg["end"] - current_group["start"]
+
+            # Check: Same speaker AND stays under the time limit?
+            if (next_seg["speaker"] == current_group["speaker"] and 
+                potential_duration <= max_duration_sec):
+                
+                # Update the end time of the current working block
+                current_group["end"] = next_seg["end"]
+            else:
+                # Either speaker changed or limit hit: Save current and start new group
+                merged.append(current_group)
+                current_group = next_seg.copy()
+
+        # Don't forget to add the very last group
+        merged.append(current_group)
+
+        print(f"[DEBUG] Merged {len(segments)} raw segments into {len(merged)} grouped segments")
+        return merged
 
     
 
@@ -795,16 +852,14 @@ class TKLocateSpeakersUsingSilenceBreaks:
     
     def get_diarization_speakers_from_audio_file(self, audio_path, silence_thresh):
 
-        (diarNoPad, duration) = self.get_diarization_speakers_using_silence(audio_path, False, 500, silence_thresh)
-        (diarPad, duration) = self.get_diarization_speakers_using_silence(audio_path, True, 500, silence_thresh)
+        (diar, duration) = self.get_diarization_speakers_using_silence(audio_path,  silence_thresh)
 
         # if same speaker speaks for short time, merge those segments together
-        mergeNoPad = self.merge_small_consecutive_segments(diarNoPad)
-        mergePad = self.merge_small_consecutive_segments(diarPad)
+        mergeDiar = self.merge_small_consecutive_segments(diar)
 
         # Derive duration from segments instead of waveform
   
-        return  mergeNoPad, mergePad, duration 
+        return  mergeDiar, duration 
     
 
 

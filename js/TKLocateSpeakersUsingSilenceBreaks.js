@@ -52,9 +52,16 @@ app.registerExtension({
                 let dragOffsetX = 0;
                 let speakerTimes = [];   // ← start,end,speaker
 
+                const stateWidget = node.widgets.find(w => w.name === "track_state");
+                if (stateWidget) {
+                    hideWidget(stateWidget); // <--- Use your existing helper here
+                }
+
                 const transitionWidget = node.widgets?.find(w => w.name === "speaker_times");
                 if (transitionWidget) transitionWidget.hidden = true;
 
+ 
+                
                 // ── Geometry helpers ─────────────────────────────────────
                
                 drawButtons(node);
@@ -72,6 +79,10 @@ app.registerExtension({
 
                                 // Set the flag to dirty
                                 if (stateWidget) stateWidget.value = "DataChange";
+
+                                // ADD THESE TWO:
+                                node.setProperty("track_state", "DataChange"); // Sets it on the node object
+                                node.serialize_widgets = true;   
                                 console.log("State set to: DataChange");
                             };
                         }
@@ -329,6 +340,15 @@ app.registerExtension({
                     detectBtn.onclick = async () => {
                         let audioPath = null;  // ← add this
                         console.log("detect button clicked!");  
+
+                        // 2. Reset the state flag
+                        const stateWidget = node.widgets.find(w => w.name === "track_state");
+                        if (stateWidget) {
+                            stateWidget.value = "DataUnchanged";
+                            console.log("State reset to: DataUnchanged");
+                        }
+
+                        
                         const fullaudioInput = node.inputs?.find(i => i.name === "fullaudio");
 
                         if (!fullaudioInput?.link) {
@@ -650,12 +670,7 @@ app.registerExtension({
                         node.setDirtyCanvas(true, true);
                     }
 
-
-               
-
                 };
-
-               
 
                 
                 if (node.size[1] < MIN_HEIGHT_FORM) {
@@ -670,7 +685,12 @@ app.registerExtension({
                     this.size[1] = MIN_HEIGHT_FORM;
                 };
 
+                // 2. Trigger the resize logic manually
+                if (node.onResize) {
+                    node.onResize(node.size);
+                }
 
+                // 3. Force a redraw of the background
                 node.setDirtyCanvas(true, true);
 
             },10); // set timeout

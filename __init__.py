@@ -17,14 +17,15 @@ NODE_CLASS_MAPPINGS = {
     "TKSpeakerDataFromTrack" : speakers.TKSpeakerDataFromTrack,
     "TKTrimImageOverlap": audioChunker.TKTrimImageOverlap,
     "TKCalcLTXFrames":    audioChunker.TKCalcLTXFrames,
+    "TKTrimAudioWithBooleans": speakers.TKTrimAudioWithBooleans,
     "TKAudioSpeakerTalkTime": speakers.TKAudioSpeakerTalkTime,}
-
 
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptEnhanced": "Enhanced Prompt (Cam)",
-     "TKCalcLTXFrames":    "TK Calc LTX Frames",
+     "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
+     "TKCalcLTXFrames":    "Calculate LTX Frames",
      "TKVideoUserInputs": "Video User Inputs",
      "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
@@ -37,7 +38,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKMergeAudioList": "Merge audio list to 1 audio",
      "TKTotalTracksInAudio": "User supplied tracks",
      "TKLocateSpeakersUsingSilenceBreaks": "Identify Speakers using Silence Breaks",
-     "TKTrimImageOverlap": "Trim images to remove overlap",
+     "TKTrimImageOverlap": "Trim extra padding frames from video",
      "TKSpeakerDataFromTrack" : "Get a Track details from Track",
      "TKAudioSpeakerTalkTime": "Speaker Talk Times",
 
