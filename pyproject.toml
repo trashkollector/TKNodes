@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-HandyNodes-KT"
-description = "Handy Nodes - TKVideoUserInputs, TKSmartAudioChunker, TKAudioSpeakerTalkTime, TKPromptEnhanced"
-version = "1.1.6"
+description = "Handy Nodes - TKPromptEnhanced, TKVideoUserInputs, TKVideoAudioFuse, TKAudioFuse, TKSamplerUserInputs"
+version = "1.2.0"
 license = { file = "LICENSE" }
 
 [project.urls]
