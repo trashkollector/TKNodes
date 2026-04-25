@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -20,7 +22,7 @@ from aiohttp import web
 @PromptServer.instance.routes.post("/tk/detect_speakers")
 async def detect_speakers_endpoint(request):
     try:
-        print("🔍 Detect Speakers in Audio File Http endpoint hit!")  # ← add this
+      
         json_data = await request.json()
 
         audio_name = json_data.get("audio")
@@ -476,7 +478,7 @@ class TKLocateSpeakersUsingSilenceBreaks:
         # USER ENTERED DATA TO OVERRIDE AUTO
         if track_state == "DataChange": 
             # MANUAL DIARIZATION
-            print(f"*** DATA CHANGE - User manually entered tracks ***")
+
             speaker_times = manualDiarization
             (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(manualDiarization)
 
@@ -484,7 +486,6 @@ class TKLocateSpeakersUsingSilenceBreaks:
         else :
             diarization       = self.autoSegmentsFromAudio
 
-            print(f"**** Using AUTO Segments ")
             speaker_times = diarization
             (speaker1tracks, speaker2tracks) = self.extact_2_speakers_from_diarization(diarization)
                     
@@ -755,14 +756,40 @@ class TKLocateSpeakersUsingSilenceBreaks:
     # Need to follow rules and include silence so speakers switch
     def get_diarization_speakers_using_silence(self, filename, split_threshold_ms=800):
         # This now only uses one threshold to decide when to toggle speakers
-        print(f"DEBUG: Processing with split_threshold {split_threshold_ms}ms")
+  
+        # Build the Audacity Label file and then check to see if user provided one
+        base_name = os.path.basename(filename).rsplit('.', 1)[0] + ".txt"
+        
+        # 2. Define the two places to look
+        path_in_input = os.path.join(os.path.dirname(filename), base_name)
+        path_in_docs = os.path.join(str(Path.home()), "Documents", base_name)
+
+        # 3. Search logic
+        final_label_path = None
+        if os.path.exists(path_in_input):
+            final_label_path = path_in_input
+        elif os.path.exists(path_in_docs):
+            print(f"DEBUG: Found labels in Documents! {path_in_docs}")
+            final_label_path = path_in_docs
+
+        # 4. Use the labels if found
+        if final_label_path:
+            segments = self.get_diarization_from_labels(final_label_path)
+            audio = AudioSegment.from_file(filename)
+            return segments, len(audio) / 1000.0
 
         audio = AudioSegment.from_file(filename)
+        duration_sec = len(audio) / 1000.0
+
+         # FALLBACK: Your original silence logic starts here
+
+        print(f"Pydub Processing audio file with split_threshold {split_threshold_ms}ms")
+        print(f"Audacity label files also supported .   Check  workflow for more info")
+        
         if audio.channels > 1:
             audio = audio.set_channels(1)
         audio = audio.set_frame_rate(16000)
 
-        duration_sec = len(audio) / 1000.0
 
         # Detect non-silent chunks based on pydub's sensitivity
         chunks = detect_nonsilent(
@@ -808,6 +835,50 @@ class TKLocateSpeakersUsingSilenceBreaks:
         })
 
         return segments, duration_sec
+
+
+
+    def get_diarization_from_labels(self, label_filename):
+
+        print(f"Using labels file for track timings")
+        segments = []
+        current_speaker = 0  # Start with Speaker 0
+
+        with open(label_filename, "r") as f:
+            for i, line in enumerate(f):
+                parts = line.strip().split("\t")
+                if len(parts) < 2: continue
+                
+                start_sec = float(parts[0])
+                end_sec = float(parts[1])
+                label_text = parts[2] if len(parts) > 2 else ""
+
+                # Check for manual override "1" or "2"
+                if "1" in label_text:
+                    speaker_id = 0
+                elif "2" in label_text:
+                    speaker_id = 1
+                else:
+                    # No manual number? Use the flip-flop logic
+                    speaker_id = current_speaker
+
+                print(f"DEBUG: Segment {i} | Speaker {speaker_id} | Start: {start_sec:.2f}s | End: {end_sec:.2f}s |Label: '{label_text}'")
+
+                segments.append({
+                    "start": start_sec,
+                    "end": end_sec,
+                    "speaker": speaker_id
+                })
+
+                # Always toggle based on the CURRENT segment so the NEXT one alternates
+                current_speaker = 1 if speaker_id == 0 else 0
+                
+        return segments
+
+
+
+
+
 
     
     def merge_diarization_segments(self, segments, max_duration_sec=10.0):
