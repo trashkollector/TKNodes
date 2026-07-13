@@ -13,26 +13,11 @@ import numpy as np
 #  August 10, 2025
 #  https://civitai.com/user/trashkollector175
 
-
 any_type = type("AnyType", (str,), {"__ne__": lambda self, o: False})
 ANY = any_type("*")
-
 ######################################################################################
-
-
-
-
-
-
-
-
-
 # Remember to include your NODE_CLASS_MAPPINGS at the bottom of your file!
-
-
-
-
-    
+   
 class TKPromptEnhanced:
 
     def __init__(self):
@@ -247,8 +232,112 @@ class TKPhotoUserInputs:
 
 
 
-    
+class TKFadeInVideo:
+    """Fades in the first N frames of a video from black (or a chosen color)
+    to full opacity. Frame 1 = 0% opaque, frame N = 100% opaque, frames
+    after N are untouched. Intended to run right after VAE Decode."""
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "Decoded video frames [N, H, W, C]"}),
+                "fade_frames": ("INT", {"default": 5, "min": 1, "max": 240,
+                                         "tooltip": "Number of frames to fade in over. "
+                                                     "Frame 'fade_frames' reaches 100%."}),
+                "start_alpha": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
+                                           "tooltip": "Starting opacity at frame 1 (0.5 = 50%). "
+                                                       "Ramps up to 1.0 by fade_frames."}),
+            },
+            "optional": {
+                "fade_color": ("STRING", {"default": "0,0,0",
+                                           "tooltip": "R,G,B (0-255) to fade in from. Default black."}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "fade_in"
+    CATEGORY = "TKNodes"
+
+    def fade_in(self, images, fade_frames, start_alpha=0.5, fade_color="0,0,0"):
+        import torch
+           
+        total_frames = images.shape[0]
+        n = min(fade_frames, total_frames)
+
+        # Parse fade color -> normalized 0-1 tensor matching channel count
+        try:
+            r, g, b = [float(c.strip()) / 255.0 for c in fade_color.split(",")]
+        except Exception:
+            r, g, b = 0.0, 0.0, 0.0
+
+        channels = images.shape[-1]
+        if channels == 4:
+            color = torch.tensor([r, g, b, 1.0], dtype=images.dtype, device=images.device)
+        else:
+            color = torch.tensor([r, g, b], dtype=images.dtype, device=images.device)
+
+        result = images.clone()
+
+        # Opacity ramps linearly from start_alpha -> 1.0 (fully opaque/original)
+        # frame 1 -> start_alpha, frame n -> 1.0
+        alpha_range = 1.0 - start_alpha
+        for i in range(n):
+            alpha = start_alpha + alpha_range * ((i + 1) / n)
+            frame = images[i]
+            faded = frame * alpha + color * (1.0 - alpha)
+            result[i] = faded.clamp(0.0, 1.0)
+
+        return (result,)
+
+
+
+class TKCrossDissolve:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "curr_scene": ("IMAGE",),
+                "curve": (["linear", "ease_in_out"],),
+            },
+            "optional": {
+                "prev_tail": ("IMAGE",),  # absent/empty on segment 1
+            }
+        }
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "blend"
+    CATEGORY = "TKNodes"
+
+    def blend(self, curr_scene, curve, prev_tail=None):
+        print(f"[dissolve] CALLED — prev_tail is None: {prev_tail is None}, curr_scene shape: {curr_scene.shape}")
+        if prev_tail is None or prev_tail.shape[0] == 0:
+            print("[tail] empty TAIL — skipping dissolve")
+            return (curr_scene,)
+
+        print(f"[dissolve] prev_tail dtype={prev_tail.dtype}, shape={prev_tail.shape}, min={prev_tail.min().item():.4f}, max={prev_tail.max().item():.4f}")
+        print(f"[dissolve] curr_scene dtype={curr_scene.dtype}, shape={curr_scene.shape}, min={curr_scene.min().item():.4f}, max={curr_scene.max().item():.4f}")
        
-        
-        
+        print(f"[dissolve] prev_tail shape: {prev_tail.shape}, curr_scene shape: {curr_scene.shape}")
+
+        n = min(prev_tail.shape[0], curr_scene.shape[0])
+        print(f"[dissolve] n={n}, curve={curve}")
+
+        curr_head = curr_scene[:n]
+        curr_rest = curr_scene[n:]
+
+        alphas = torch.linspace(0, 1, n)
+        if curve == "ease_in_out":
+            alphas = alphas * alphas * (3 - 2 * alphas)
+        print(f"[dissolve] alphas: {alphas}")
+
+        blended = torch.stack([
+            (1 - a) * prev_tail[i] + a * curr_head[i]
+            for i, a in enumerate(alphas)
+        ])
+
+        out = torch.cat([blended, curr_rest], dim=0)
+        print(f"[dissolve] out shape: {out.shape}")
+        return (out,)
+            
 

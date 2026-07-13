@@ -8,6 +8,94 @@ import torch.nn.functional as F
 import torchaudio
 
 
+class TKSmartVideoChunker:
+    """Silence-based video/audio chunking for LTX 2.3. Slices at native fps,
+    resamples to target_fps, and snaps to a valid frame count (8n+1)."""
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "video": ("IMAGE", {"tooltip": "Input video frames, native fps, no resample"}),
+                "audio": ("AUDIO", {"tooltip": "Input audio"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 9999}),
+                "chunk_secs": ("INT", {"default": 10}),
+                "variation": ("INT", {"default": 2}),
+                "source_fps": ("FLOAT", {"default": 30.0, "min": 1.0, "max": 240.0, "step": 0.01,
+                                          "tooltip": "TRUE fps of incoming video tensor"}),
+                "target_fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0, "step": 0.01,
+                                          "tooltip": "fps required by LTX"}),
+            },
+        }
+
+    RETURN_TYPES = ("INT", "IMAGE", "AUDIO", "INT")
+    RETURN_NAMES = ("num_chunks", "chunkOfImages", "chunkOfAudio", "numberFrames")
+    FUNCTION = "get_video_chunk_at_index"
+    CATEGORY = "HandyNodes-KT"
+
+    def get_video_chunk_at_index(self, video, audio, index, chunk_secs, variation,
+                                  source_fps, target_fps):
+        import torch
+
+        # 1. Silence-based timing, real seconds, fps-agnostic
+        audio_chunker = TKSmartAudioChunker()
+        num_chunks, chunk_size, start_time, total_duration = audio_chunker.calculate(
+            audio, index, chunk_secs, variation
+        )
+
+        # 2. Slice video at native fps
+        total_frames = video.shape[0]
+        start_frame = int(round(start_time * source_fps))
+        end_frame = int(round((start_time + chunk_size) * source_fps))
+        start_frame = max(0, min(start_frame, total_frames - 1))
+        end_frame = max(start_frame + 1, min(end_frame, total_frames))
+        native_chunk = video[start_frame:end_frame]
+        native_frame_count = native_chunk.shape[0]
+
+        # 3. Resample native_fps -> target_fps
+        actual_chunk_duration = native_frame_count / source_fps
+        target_frame_count = max(1, int(round(actual_chunk_duration * target_fps)))
+
+        if target_fps == source_fps:
+            resampled_chunk = native_chunk
+        else:
+            src_indices = torch.round(
+                torch.arange(target_frame_count, dtype=torch.float32) * (source_fps / target_fps)
+            ).long()
+            src_indices = torch.clamp(src_indices, 0, native_frame_count - 1)
+            resampled_chunk = native_chunk[src_indices]
+
+        # 4. Snap to valid LTX frame count (8n+1), trim only
+        raw_count = resampled_chunk.shape[0]
+        valid_frames = max(1, 8 * ((raw_count - 1) // 8) + 1)
+        video_chunk = resampled_chunk[:valid_frames]
+        number_frames = video_chunk.shape[0]
+
+        # 5. Slice audio to match, sample-accurate
+        exact_video_duration = number_frames / target_fps
+        waveform = audio['waveform']
+        sample_rate = audio['sample_rate']
+        total_samples = waveform.shape[-1]
+
+        start_sample = int(round(start_time * sample_rate))
+        end_sample = start_sample + int(round(exact_video_duration * sample_rate))
+        start_sample = max(0, min(start_sample, total_samples - 1))
+
+        if end_sample > total_samples:
+            existing_waveform = waveform[..., start_sample:total_samples]
+            missing_samples = end_sample - total_samples
+            silence_pad = torch.zeros(
+                (waveform.shape[0], waveform.shape[1], missing_samples),
+                dtype=waveform.dtype, device=waveform.device
+            )
+            sliced_waveform = torch.cat([existing_waveform, silence_pad], dim=-1)
+        else:
+            sliced_waveform = waveform[..., start_sample:end_sample]
+
+        audio_chunk = {"waveform": sliced_waveform, "sample_rate": sample_rate}
+
+        return (num_chunks, video_chunk, audio_chunk, number_frames)
+
 
 
 # --- THE COMFYUI NODE ---

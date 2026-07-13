@@ -1248,6 +1248,8 @@ class TKVideoUserInputsBasicCanvas {
 
 app.registerExtension({
     name: "extTKVideoUserInputsBasic",
+    canvasOnly: true,  // tells Node 2.0 to skip this extension, uses legacy canvas rendering
+
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
         // 1. Define which nodes should trigger this behavior
         const nodeMappings = {

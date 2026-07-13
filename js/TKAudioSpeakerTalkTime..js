@@ -4,6 +4,8 @@ console.log("[TKAudio] JS LOADED");
 
 app.registerExtension({
     name: "extTKAudioSpeakerTalkTime",
+    canvasOnly: true,  // tells Node 2.0 to skip this extension, uses legacy canvas rendering
+
 
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
         if (nodeData.name !== "TKAudioSpeakerTalkTime") return;

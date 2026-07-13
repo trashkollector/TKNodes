@@ -9,6 +9,7 @@ NODE_CLASS_MAPPINGS = {
     "TKAudioFuse": misc.TKAudioFuse,
     "TKAudioUnwrap": misc.TKAudioUnwrap,
     "TKSmartAudioChunker": audioChunker.TKSmartAudioChunker,
+    "TKSmartVideoChunker": audioChunker.TKSmartVideoChunker,
     "TKPrintValueToLog": misc.TKPrintValueToLog,
     "TKMergeAudioList": misc.TKMergeAudioList,
     "TKSpeakerAudioTrackExtractor" : speakers.TKSpeakerAudioTrackExtractor,
@@ -18,31 +19,34 @@ NODE_CLASS_MAPPINGS = {
     "TKTrimImageOverlap": audioChunker.TKTrimImageOverlap,
     "TKCalcLTXFrames":    audioChunker.TKCalcLTXFrames,
     "TKTrimAudioWithBooleans": speakers.TKTrimAudioWithBooleans,
-    "TKAudioSpeakerTalkTime": speakers.TKAudioSpeakerTalkTime,}
-
+    "TKAudioSpeakerTalkTime": speakers.TKAudioSpeakerTalkTime,
+    "TKFadeInVideo": tknodes.TKFadeInVideo,
+    "TKCrossDissolve": tknodes.TKCrossDissolve
+}
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptEnhanced": "Enhanced Prompt (Cam)",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
-     "TKCalcLTXFrames":    "Calculate LTX Frames",
+     "TKCalcLTXFrames":    "Calculate LTX Frames ",
      "TKVideoUserInputs": "Video User Inputs",
      "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
      "TKVideoAudioFuse": "Video Audio Fuse",
      "TKAudioFuse": "Audio Merge/Fuse",
      "TKSmartAudioChunker": "Smart Audio Chunker",
+     "TKSmartVideoChunker": "Smart Video Chunker",
      "TKAudioUnwrap": "Audio → Waveform Tensor",
      "TKPrintValueToLog": "Print Value to log",
      "TKSpeakerAudioTrackExtractor": "Extract nTh Audio track",
      "TKMergeAudioList": "Merge audio list to 1 audio",
      "TKTotalTracksInAudio": "User supplied tracks",
      "TKLocateSpeakersUsingSilenceBreaks": "Identify Speakers using Silence Breaks",
-     "TKTrimImageOverlap": "Trim extra padding frames from video",
+     "TKTrimImageOverlap": "Trim Padding used for Smooth Transition",
      "TKSpeakerDataFromTrack" : "Get a Track details from Track",
      "TKAudioSpeakerTalkTime": "Speaker Talk Times",
-
-
+     "TKFadeInVideo": "Fade in Video",
+     "TKCrossDissolve":"Dissolve effect",
 }
 
 
