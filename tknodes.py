@@ -1,9 +1,5 @@
-import nodes
 import torch
 import torch.nn.functional as F
-import torchaudio
-import random
-import math
 import torch
 from pydub import AudioSegment
 from pydub.silence import detect_silence
@@ -17,7 +13,7 @@ any_type = type("AnyType", (str,), {"__ne__": lambda self, o: False})
 ANY = any_type("*")
 ######################################################################################
 # Remember to include your NODE_CLASS_MAPPINGS at the bottom of your file!
-   
+
 class TKPromptEnhanced:
 
     def __init__(self):
@@ -160,7 +156,7 @@ class TKVideoUserInputs:
     RETURN_NAMES = ("video_width", "video_height", "total_frames","fps", "totalSeconds")
     FUNCTION = "main"
     CATEGORY = "TKNodes"
-    DESCRIPTION = "Common Video User Inputs-  Use the Length_Selector to determine if you want to select by frames or seconds"
+    DESCRIPTION = "GUI for setting video resolution , frames, duration"
 
     def main(self, width, height, total_frames, length_selector, fps, num_seconds, ):
      
@@ -233,6 +229,7 @@ class TKPhotoUserInputs:
 
 
 class TKFadeInVideo:
+    DESCRIPTION="Fade in Video"
     """Fades in the first N frames of a video from black (or a chosen color)
     to full opacity. Frame 1 = 0% opaque, frame N = 100% opaque, frames
     after N are untouched. Intended to run right after VAE Decode."""
@@ -293,32 +290,35 @@ class TKFadeInVideo:
 
 
 
+            
+
 class TKCrossDissolve:
+    DESCRIPTION="Cross Dissolve two video segments together to make transition seamless"
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "curr_scene": ("IMAGE",),
-                "curve": (["linear", "ease_in_out"],),
+                "curr_scene": ("IMAGE",  {  "tooltip": "the current video segment. "}),
+                "curve": (["linear", "ease_in_out"],  { "tooltip": "select Cross dissolve effect. "}),
             },
             "optional": {
-                "prev_tail": ("IMAGE",),  # absent/empty on segment 1
+                "prev_tail": ("IMAGE",  {"tooltip": "just the section of previous segment that we want to cross-dissolve. "}),  # absent/empty on segment 1
+                "numDissolveFrames": ("INT", {"default": 0, "min": 0, "max": 4096, "tooltip": "number of frames to cross-dissolve. if <=0, uses the full length of prev_tail instead."}),
             }
         }
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "blend"
     CATEGORY = "TKNodes"
 
-    def blend(self, curr_scene, curve, prev_tail=None):
-        print(f"[dissolve] CALLED — prev_tail is None: {prev_tail is None}, curr_scene shape: {curr_scene.shape}")
+    def blend(self, curr_scene, curve, prev_tail=None, numDissolveFrames=0):
+
         if prev_tail is None or prev_tail.shape[0] == 0:
-            print("[tail] empty TAIL — skipping dissolve")
             return (curr_scene,)
 
-        print(f"[dissolve] prev_tail dtype={prev_tail.dtype}, shape={prev_tail.shape}, min={prev_tail.min().item():.4f}, max={prev_tail.max().item():.4f}")
-        print(f"[dissolve] curr_scene dtype={curr_scene.dtype}, shape={curr_scene.shape}, min={curr_scene.min().item():.4f}, max={curr_scene.max().item():.4f}")
-       
-        print(f"[dissolve] prev_tail shape: {prev_tail.shape}, curr_scene shape: {curr_scene.shape}")
+        if numDissolveFrames is not None and numDissolveFrames > 0:
+            # take only the last numDissolveFrames of prev_tail, clamped to what's available
+            tail_n = min(numDissolveFrames, prev_tail.shape[0])
+            prev_tail = prev_tail[-tail_n:]
 
         n = min(prev_tail.shape[0], curr_scene.shape[0])
         print(f"[dissolve] n={n}, curve={curve}")
@@ -329,7 +329,6 @@ class TKCrossDissolve:
         alphas = torch.linspace(0, 1, n)
         if curve == "ease_in_out":
             alphas = alphas * alphas * (3 - 2 * alphas)
-        print(f"[dissolve] alphas: {alphas}")
 
         blended = torch.stack([
             (1 - a) * prev_tail[i] + a * curr_head[i]
@@ -337,7 +336,4 @@ class TKCrossDissolve:
         ])
 
         out = torch.cat([blended, curr_rest], dim=0)
-        print(f"[dissolve] out shape: {out.shape}")
         return (out,)
-            
-

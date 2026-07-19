@@ -5,44 +5,117 @@ from pydub.silence import detect_silence
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchaudio
 
 
-class TKSmartVideoChunker:
-    """Silence-based video/audio chunking for LTX 2.3. Slices at native fps,
-    resamples to target_fps, and snaps to a valid frame count (8n+1)."""
+ 
+class TKPromptLooper:
+    DESCRIPTION = "Prompt Looper - Loops between 2 to 4 prompts/images.  It keeps alternating prompt and image for the workflow"
 
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "video": ("IMAGE", {"tooltip": "Input video frames, native fps, no resample"}),
-                "audio": ("AUDIO", {"tooltip": "Input audio"}),
-                "index": ("INT", {"default": 0, "min": 0, "max": 9999}),
-                "chunk_secs": ("INT", {"default": 10}),
-                "variation": ("INT", {"default": 2}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1}),
+                "prompt1": ("STRING", {"tooltip": "prompt 1", "multiline": True}),
+                "image1": ("IMAGE", ),
+                "prompt2": ("STRING", {"tooltip": "prompt 2", "multiline": True}),
+                "image2": ("IMAGE", ),
+            },
+            "optional": {
+                "prompt3": ("STRING", {"tooltip": "prompt 3", "multiline": True}),
+                "image3": ("IMAGE", ),
+                "prompt4": ("STRING", {"tooltip": "prompt 4", "multiline": True}),
+                "image4": ("IMAGE", ),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "STRING", "IMAGE")
+    RETURN_NAMES = ("index", "prompt", "image")
+    FUNCTION = "getResultsAtIndex"
+    CATEGORY = "TKNodes"
+
+    def getResultsAtIndex(self, index, prompt1, image1, prompt2, image2,
+                           prompt3=None, image3=None, prompt4=None, image4=None):
+
+        candidates = [
+            (prompt1, image1),
+            (prompt2, image2),
+            (prompt3, image3),
+            (prompt4, image4),
+        ]
+
+        items = []
+        for prompt, image in candidates:
+            if prompt is None or image is None:
+                break
+            items.append((prompt, image))
+
+        count = len(items)
+        if count == 0:
+            raise ValueError("TKPromptLooper: no valid prompt/image pairs were supplied.")
+
+        wrapped_index = index % count
+
+        result_prompt, result_image = items[wrapped_index]
+
+        return (wrapped_index, result_prompt, result_image)
+
+
+
+
+class TKSmartVideoChunker:
+    DESCRIPTION = "Silence-based video/audio chunking for LTX 2.3"
+
+    """Silence-based video/audio chunking for LTX 2.3. Slices at native fps,
+    resamples to target_fps, and snaps to a valid frame count (8n+1).
+ 
+    Carries actual_end_time forward across loop iterations (via
+    start_time_override) so chunk boundaries stay sample/frame accurate
+    even when 8n+1 snapping trims or pads a chunk's true length.
+    """
+ 
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "video": ("IMAGE", {"tooltip": "Source video"}),
+                "audio": ("AUDIO", {"tooltip": "Source audio"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 9999,"tooltip": "Index from Loop - zero based"}),
+                "chunk_secs": ("INT", {"default": 10,"tooltip": "Size of each video segment in seconds"}),
+                "variation": ("INT", {"default": 2, "tooltip": "Num seconds variation.  chunks_secs +/- variation adds flexiblity to find silence"}),
                 "source_fps": ("FLOAT", {"default": 30.0, "min": 1.0, "max": 240.0, "step": 0.01,
                                           "tooltip": "TRUE fps of incoming video tensor"}),
                 "target_fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0, "step": 0.01,
-                                          "tooltip": "fps required by LTX"}),
+                                          "tooltip": "fps required by LTX- usually 25"}),
+            },
+            "optional": {
+                "start_time_override": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 999999.0, "step": 0.001,
+                                                    "tooltip": "Use -1 for index 0, used to maintain exact timing of chunks."}),
             },
         }
-
-    RETURN_TYPES = ("INT", "IMAGE", "AUDIO", "INT")
-    RETURN_NAMES = ("num_chunks", "chunkOfImages", "chunkOfAudio", "numberFrames")
+ 
+    RETURN_TYPES = ("INT", "IMAGE", "AUDIO", "INT", "FLOAT", "FLOAT", "FLOAT")
+    RETURN_NAMES = ("num_chunks", "chunkOfImages", "chunkOfAudio", "numberFrames", "actual_end_time", "actual_start_time", "chunk_duration")
     FUNCTION = "get_video_chunk_at_index"
-    CATEGORY = "HandyNodes-KT"
-
+    CATEGORY = "TKNodes"
+ 
     def get_video_chunk_at_index(self, video, audio, index, chunk_secs, variation,
-                                  source_fps, target_fps):
+                                  source_fps, target_fps, start_time_override=-1.0):
         import torch
-
+ 
         # 1. Silence-based timing, real seconds, fps-agnostic
         audio_chunker = TKSmartAudioChunker()
         num_chunks, chunk_size, start_time, total_duration = audio_chunker.calculate(
             audio, index, chunk_secs, variation
         )
 
+
+        # 1b. Override start_time with the carried actual end of the previous
+        #     chunk, so boundaries stay contiguous regardless of 8n+1 snapping.
+        if start_time_override is not None:
+            if start_time_override >= 0.0:
+                start_time = start_time_override
+ 
         # 2. Slice video at native fps
         total_frames = video.shape[0]
         start_frame = int(round(start_time * source_fps))
@@ -51,11 +124,11 @@ class TKSmartVideoChunker:
         end_frame = max(start_frame + 1, min(end_frame, total_frames))
         native_chunk = video[start_frame:end_frame]
         native_frame_count = native_chunk.shape[0]
-
+ 
         # 3. Resample native_fps -> target_fps
         actual_chunk_duration = native_frame_count / source_fps
         target_frame_count = max(1, int(round(actual_chunk_duration * target_fps)))
-
+ 
         if target_fps == source_fps:
             resampled_chunk = native_chunk
         else:
@@ -64,23 +137,30 @@ class TKSmartVideoChunker:
             ).long()
             src_indices = torch.clamp(src_indices, 0, native_frame_count - 1)
             resampled_chunk = native_chunk[src_indices]
-
-        # 4. Snap to valid LTX frame count (8n+1), trim only
+ 
+        # 4. Snap to valid LTX frame count (8n+1) - always trim down.
+        #    No padding: the start_time_override/actual_end_time carry
+        #    already keeps chunk boundaries flush regardless of trim
+        #    direction, so there's no need to freeze-frame pad or
+        #    silence-fill. A few trimmed frames (max 7, ~280ms worst case
+        #    at 25fps) are simply not shown, with audio and video staying
+        #    perfectly matched throughout - no gaps, no frozen frames.
         raw_count = resampled_chunk.shape[0]
         valid_frames = max(1, 8 * ((raw_count - 1) // 8) + 1)
+        #alid_frames = raw_count  # OVERRIDE- NO SNAP- JT
         video_chunk = resampled_chunk[:valid_frames]
         number_frames = video_chunk.shape[0]
-
+ 
         # 5. Slice audio to match, sample-accurate
         exact_video_duration = number_frames / target_fps
         waveform = audio['waveform']
         sample_rate = audio['sample_rate']
         total_samples = waveform.shape[-1]
-
+ 
         start_sample = int(round(start_time * sample_rate))
         end_sample = start_sample + int(round(exact_video_duration * sample_rate))
         start_sample = max(0, min(start_sample, total_samples - 1))
-
+ 
         if end_sample > total_samples:
             existing_waveform = waveform[..., start_sample:total_samples]
             missing_samples = end_sample - total_samples
@@ -91,12 +171,16 @@ class TKSmartVideoChunker:
             sliced_waveform = torch.cat([existing_waveform, silence_pad], dim=-1)
         else:
             sliced_waveform = waveform[..., start_sample:end_sample]
-
+ 
         audio_chunk = {"waveform": sliced_waveform, "sample_rate": sample_rate}
-
-        return (num_chunks, video_chunk, audio_chunk, number_frames)
-
-
+ 
+        # 6. Carry the real end time forward for the next iteration
+        actual_end_time = start_time + exact_video_duration
+ 
+        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration)
+ 
+ 
+ 
 
 # --- THE COMFYUI NODE ---
 class TKSmartAudioChunker:
@@ -109,7 +193,7 @@ class TKSmartAudioChunker:
         return {
             "required": {
                 "audio": ("AUDIO",{"tooltip":"the Full audio that will get chunked"}), # Connect the gray wire here
-                "index": ("INT", {"default": 0, "tooltip": "Index into audio chunks" }),
+                "index": ("INT", {"default": 0, "tooltip": "Index from the for loop" }),
                 "chunk_secs": ("INT", {"default": 10, "tooltip": "Size of an Audio Chunk, for low VRAM use 5"}),
                 "variation": ("INT", {"default": 2, "tooltip": "we separate when we find silence, this tells how far back and forward to search for silence"}),
             },
@@ -199,6 +283,7 @@ class TKSmartAudioChunker:
 
 
 class TKTrimImageOverlap:
+    DESCRIPTION="Trims overlap frames from video segments when they have been previously paddded for various reasons"
     """
     Trims overlap frames from video segments based on position in sequence.
 
@@ -217,14 +302,14 @@ class TKTrimImageOverlap:
         IMAGE batch with overlap frames removed
     """
     # This is what ComfyUI looks for to display a node-level description
-    DESCRIPTION = "Trims overlap frames from video segments based on position in sequence."
+
 
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image":           ("IMAGE",{"tooltip":"the video needed because we need to trim from beginnning and end "}),
+                "image":           ("IMAGE",{"tooltip":"source image with padding "}),
                 "idx":             ("INT", {"default": 0, "min": 0, "max": 9999, "tooltip": "Index for audio chunks"}),
                 "total_segments":  ("INT", {"default": 1, "min": 1, "max": 9999, "tooltip": "total audio chunks"}),
                 "start_frames":    ("INT", {"default": 12, "min": 0, "max": 9999, "tooltip": "start frame to remove"}),
@@ -266,7 +351,7 @@ class TKTrimImageOverlap:
 
 
 class TKCalcLTXFrames:
-    DESCRIPTION = "Convert to LTX frame counts so trimming is perfectly accurate to avoid out of sync conditions."
+    DESCRIPTION = "LTX requires very specific frame counts.. this guarantees perfect LTX boundries"
 
     """
     Converts a bare chunk duration (NO overlap) to a valid LTX frame count,

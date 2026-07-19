@@ -21,12 +21,14 @@ NODE_CLASS_MAPPINGS = {
     "TKTrimAudioWithBooleans": speakers.TKTrimAudioWithBooleans,
     "TKAudioSpeakerTalkTime": speakers.TKAudioSpeakerTalkTime,
     "TKFadeInVideo": tknodes.TKFadeInVideo,
-    "TKCrossDissolve": tknodes.TKCrossDissolve
+    "TKCrossDissolve": tknodes.TKCrossDissolve,
+     "TKPromptLooper": audioChunker.TKPromptLooper,  
 }
+   
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-     "TKPromptEnhanced": "Enhanced Prompt (Cam)",
+     "TKPromptEnhanced": "Enhanced Prompt with camera descriptives",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
      "TKCalcLTXFrames":    "Calculate LTX Frames ",
      "TKVideoUserInputs": "Video User Inputs",
@@ -39,14 +41,16 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKAudioUnwrap": "Audio → Waveform Tensor",
      "TKPrintValueToLog": "Print Value to log",
      "TKSpeakerAudioTrackExtractor": "Extract nTh Audio track",
-     "TKMergeAudioList": "Merge audio list to 1 audio",
+     "TKMergeAudioList": "Merge audio list to master audio",
      "TKTotalTracksInAudio": "User supplied tracks",
      "TKLocateSpeakersUsingSilenceBreaks": "Identify Speakers using Silence Breaks",
      "TKTrimImageOverlap": "Trim Padding used for Smooth Transition",
      "TKSpeakerDataFromTrack" : "Get a Track details from Track",
      "TKAudioSpeakerTalkTime": "Speaker Talk Times",
      "TKFadeInVideo": "Fade in Video",
-     "TKCrossDissolve":"Dissolve effect",
+     "TKPromptLooper": "Prompt Looper",
+     "TKCrossDissolve":"Cross Dissolve Effect",
+
 }
 
 
