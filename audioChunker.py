@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
  
 class TKPromptLooper:
-    DESCRIPTION = "Prompt Looper - Loops between 2 to 4 prompts/images.  It keeps alternating prompt and image for the workflow"
+    DESCRIPTION = "Prompt Looper - Loops between 1 to 4 prompts/images.  It keeps alternating prompt and image for the workflow"
 
     @classmethod
     def INPUT_TYPES(s):
@@ -18,10 +18,11 @@ class TKPromptLooper:
                 "index": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1}),
                 "prompt1": ("STRING", {"tooltip": "prompt 1", "multiline": True}),
                 "image1": ("IMAGE", ),
-                "prompt2": ("STRING", {"tooltip": "prompt 2", "multiline": True}),
-                "image2": ("IMAGE", ),
+
             },
             "optional": {
+                "prompt2": ("STRING", {"tooltip": "prompt 2", "multiline": True}),
+                "image2": ("IMAGE", ),
                 "prompt3": ("STRING", {"tooltip": "prompt 3", "multiline": True}),
                 "image3": ("IMAGE", ),
                 "prompt4": ("STRING", {"tooltip": "prompt 4", "multiline": True}),
@@ -35,7 +36,7 @@ class TKPromptLooper:
     CATEGORY = "TKNodes"
 
     def getResultsAtIndex(self, index, prompt1, image1, prompt2, image2,
-                           prompt3=None, image3=None, prompt4=None, image4=None):
+                       prompt3=None, image3=None, prompt4=None, image4=None):
 
         candidates = [
             (prompt1, image1),
@@ -46,7 +47,7 @@ class TKPromptLooper:
 
         items = []
         for prompt, image in candidates:
-            if prompt is None or image is None:
+            if prompt is None or prompt.strip() == "":
                 break
             items.append((prompt, image))
 
@@ -59,7 +60,6 @@ class TKPromptLooper:
         result_prompt, result_image = items[wrapped_index]
 
         return (wrapped_index, result_prompt, result_image)
-
 
 
 
