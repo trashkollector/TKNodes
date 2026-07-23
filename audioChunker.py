@@ -94,8 +94,8 @@ class TKSmartVideoChunker:
             },
         }
  
-    RETURN_TYPES = ("INT", "IMAGE", "AUDIO", "INT", "FLOAT", "FLOAT", "FLOAT")
-    RETURN_NAMES = ("num_chunks", "chunkOfImages", "chunkOfAudio", "numberFrames", "actual_end_time", "actual_start_time", "chunk_duration")
+    RETURN_TYPES = ("INT",          "IMAGE",         "AUDIO",       "INT",           "FLOAT",           "FLOAT",           "FLOAT",            "INT",)
+    RETURN_NAMES = ("num_chunks", "chunkOImages", "chunkOfAudio", "numberFrames", "actual_end_time", "actual_start_time", "chunk_duration", "numLTXFrames",)
     FUNCTION = "get_video_chunk_at_index"
     CATEGORY = "TKNodes"
  
@@ -189,7 +189,7 @@ class TKSmartVideoChunker:
         # 6. Carry the real end time forward for the next iteration
         actual_end_time = start_time + exact_video_duration
  
-        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration)
+        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration, generation_frames,)
  
  
  
@@ -427,6 +427,7 @@ class TKCalcLTXFrames:
               f"trim start={start_trim}f end={end_trim}f")
 
         return (frame_count, overlap_ms, start_trim, end_trim, actual_secs)
+
 
 
 
