@@ -337,3 +337,45 @@ class TKCrossDissolve:
 
         out = torch.cat([blended, curr_rest], dim=0)
         return (out,)
+
+
+class TKTrimFrames:
+    DESCRIPTION = "Trim an image sequence and/or matching audio down to an exact target duration"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "frame_count": ("INT", {"default": 1, "min": 1, "max": 100000, "tooltip": "true target frame count (video)"}),
+                "target_fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0}),
+            },
+            "optional": {
+                "images": ("IMAGE",),
+                "audio": ("AUDIO",),
+            }
+        }
+    RETURN_TYPES = ("IMAGE", "AUDIO")
+    RETURN_NAMES = ("images", "audio")
+    FUNCTION = "trim"
+    CATEGORY = "TKNodes"
+
+    def trim(self, frame_count, target_fps, images=None, audio=None):
+        out_images = None
+        if images is not None:
+            n = min(frame_count, images.shape[0])
+            out_images = images[:n]
+
+        out_audio = None
+        if audio is not None:
+            waveform = audio["waveform"]
+            sample_rate = audio["sample_rate"]
+            target_duration = frame_count / target_fps
+            target_samples = int(round(target_duration * sample_rate))
+            target_samples = min(target_samples, waveform.shape[-1])
+            out_audio = {
+                "waveform": waveform[..., :target_samples],
+                "sample_rate": sample_rate,
+            }
+
+        return (out_images, out_audio)
+
+    

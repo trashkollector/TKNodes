@@ -22,7 +22,8 @@ NODE_CLASS_MAPPINGS = {
     "TKAudioSpeakerTalkTime": speakers.TKAudioSpeakerTalkTime,
     "TKFadeInVideo": tknodes.TKFadeInVideo,
     "TKCrossDissolve": tknodes.TKCrossDissolve,
-     "TKPromptLooper": audioChunker.TKPromptLooper,  
+    "TKPromptLooper": audioChunker.TKPromptLooper,  
+    "TKTrimFrames": tknodes.TKTrimFrames,
 }
    
 
@@ -50,6 +51,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKFadeInVideo": "Fade in Video",
      "TKPromptLooper": "Prompt Looper",
      "TKCrossDissolve":"Cross Dissolve Effect",
+     "TKTrimFrames": "Trim Frames and Audio",
 
 }
 

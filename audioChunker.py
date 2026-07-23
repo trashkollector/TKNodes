@@ -115,20 +115,30 @@ class TKSmartVideoChunker:
         if start_time_override is not None:
             if start_time_override >= 0.0:
                 start_time = start_time_override
- 
+
         # 2. Slice video at native fps
         total_frames = video.shape[0]
         start_frame = int(round(start_time * source_fps))
-        end_frame = int(round((start_time + chunk_size) * source_fps))
+        true_end_frame = int(round((start_time + chunk_size) * source_fps))
         start_frame = max(0, min(start_frame, total_frames - 1))
-        end_frame = max(start_frame + 1, min(end_frame, total_frames))
+        true_end_frame = max(start_frame + 1, min(true_end_frame, total_frames))
+
+        # extend the native window so resampling has enough real frames
+        # to round UP to the next 8n+1 boundary (never short)
+        pad_native_frames = int(round(8 * (source_fps / target_fps))) + 1
+        end_frame = min(true_end_frame + pad_native_frames, total_frames)
+
         native_chunk = video[start_frame:end_frame]
         native_frame_count = native_chunk.shape[0]
- 
+        true_native_frame_count = true_end_frame - start_frame  # unpadded, real target
+
         # 3. Resample native_fps -> target_fps
+        true_chunk_duration = true_native_frame_count / source_fps
+        true_target_frame_count = max(1, int(round(true_chunk_duration * target_fps)))
+
         actual_chunk_duration = native_frame_count / source_fps
         target_frame_count = max(1, int(round(actual_chunk_duration * target_fps)))
- 
+
         if target_fps == source_fps:
             resampled_chunk = native_chunk
         else:
@@ -137,22 +147,24 @@ class TKSmartVideoChunker:
             ).long()
             src_indices = torch.clamp(src_indices, 0, native_frame_count - 1)
             resampled_chunk = native_chunk[src_indices]
- 
-        # 4. Snap to valid LTX frame count (8n+1) - always trim down.
-        #    No padding: the start_time_override/actual_end_time carry
-        #    already keeps chunk boundaries flush regardless of trim
-        #    direction, so there's no need to freeze-frame pad or
-        #    silence-fill. A few trimmed frames (max 7, ~280ms worst case
-        #    at 25fps) are simply not shown, with audio and video staying
-        #    perfectly matched throughout - no gaps, no frozen frames.
+
+        # 4. Snap to valid LTX frame count (8n+1) - round UP, never down.
+        #    generation_frames = what we ask LTX to generate (always >= true target)
+        #    true_target_frame_count = what we trim back down to before writing to disk
         raw_count = resampled_chunk.shape[0]
-        valid_frames = max(1, 8 * ((raw_count - 1) // 8) + 1)
-        #alid_frames = raw_count  # OVERRIDE- NO SNAP- JT
-        video_chunk = resampled_chunk[:valid_frames]
-        number_frames = video_chunk.shape[0]
+        generation_frames = min(
+            raw_count,
+            8 * ((true_target_frame_count - 1) // 8 + 1) + 1
+        )
+        video_chunk = resampled_chunk[:generation_frames]
+        number_frames = min(true_target_frame_count, generation_frames)  # trim target
+
+
  
         # 5. Slice audio to match, sample-accurate
         exact_video_duration = number_frames / target_fps
+        print(f"[DEBUG] target_fps={target_fps} number_frames={number_frames} exact_video_duration={exact_video_duration}")
+
         waveform = audio['waveform']
         sample_rate = audio['sample_rate']
         total_samples = waveform.shape[-1]
@@ -418,3 +430,5 @@ class TKCalcLTXFrames:
 
 
 
+
+    
