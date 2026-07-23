@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-HandyNodes-KT"
-description = "Handy Nodes - Various nodes for Video/Audio Chunking, gui inputs, speaker selection, prompt looper, etc."
-version = "1.2.4    "
+description = "Handy Nodes - GUI INPUTS, Video/Audio Chunking, Prompt looper, Speaker control, etc."
+version = "1.2.5"
 license = { file = "LICENSE" }
 
 [project.urls]
