@@ -4,6 +4,7 @@ import torch
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 import numpy as np
+import math
 
 #  TK Collector -  Various Nodes for Comfy UI, TKPromptEnhanced
 #  August 10, 2025
@@ -13,6 +14,14 @@ any_type = type("AnyType", (str,), {"__ne__": lambda self, o: False})
 ANY = any_type("*")
 ######################################################################################
 # Remember to include your NODE_CLASS_MAPPINGS at the bottom of your file!
+
+
+
+
+
+
+
+    
 
 class TKPromptEnhanced:
 
@@ -302,8 +311,8 @@ class TKCrossDissolve:
                 "curve": (["linear", "ease_in_out"],  { "tooltip": "select Cross dissolve effect. "}),
             },
             "optional": {
-                "prev_tail": ("IMAGE",  {"tooltip": "just the section of previous segment that we want to cross-dissolve. "}),  # absent/empty on segment 1
-                "numDissolveFrames": ("INT", {"default": 0, "min": 0, "max": 4096, "tooltip": "number of frames to cross-dissolve. if <=0, uses the full length of prev_tail instead."}),
+                "prev_tail": ("IMAGE",  {"tooltip": "previous video segment to cross-dissolve. "}),  # absent/empty on segment 1
+                "numDissolveFrames": ("INT", {"default": 20, "min": 0, "max": 1000, "tooltip": "number of frames to cross-dissolve. if <=0, uses the full length of prev_tail instead."}),
             }
         }
     RETURN_TYPES = ("IMAGE",)
@@ -378,4 +387,4 @@ class TKTrimFrames:
 
         return (out_images, out_audio)
 
-    
+

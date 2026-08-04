@@ -1,5 +1,4 @@
 import math
-
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 import numpy as np
@@ -7,7 +6,12 @@ import torch
 import torch.nn.functional as F
 
 
- 
+
+
+
+
+
+
 class TKPromptLooper:
     DESCRIPTION = "Prompt Looper - Loops between 1 to 4 prompts/images.  It keeps alternating prompt and image for the workflow"
 
@@ -64,54 +68,82 @@ class TKPromptLooper:
 
 
 class TKSmartVideoChunker:
-    DESCRIPTION = "Silence-based video/audio chunking for LTX 2.3"
+    DESCRIPTION = "Silence-based video/audio chunking for LTX 2.3 / Wan 2.2.   Looks for silence in audio to create chunk breaks.   This is helpful when speakers take a breath and we don't cut off speaker while talking. Chunking is required to get around VRAM issues.  For Low VRAM set chunk size lower"
 
-    """Silence-based video/audio chunking for LTX 2.3. Slices at native fps,
-    resamples to target_fps, and snaps to a valid frame count (8n+1).
- 
+    """Silence-based video/audio chunking for LTX 2.3 or Wan 2.2. Slices at
+    native fps, resamples to target_fps, and snaps to a valid frame count
+    for the selected model:
+        - LTX -> 8n+1
+        - WAN -> 4n+1
+
     Carries actual_end_time forward across loop iterations (via
     start_time_override) so chunk boundaries stay sample/frame accurate
-    even when 8n+1 snapping trims or pads a chunk's true length.
+    even when snapping trims or pads a chunk's true length.
     """
- 
+
+    # frame-count boundary divisor per model (valid counts are divisor*n + 1)
+    MODEL_DIVISORS = {
+        "LTX": 8,
+        "WAN": 4,
+    }
+
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "video": ("IMAGE", {"tooltip": "Source video"}),
                 "audio": ("AUDIO", {"tooltip": "Source audio"}),
-                "index": ("INT", {"default": 0, "min": 0, "max": 9999,"tooltip": "Index from Loop - zero based"}),
-                "chunk_secs": ("INT", {"default": 10,"tooltip": "Size of each video segment in seconds"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 9999, "tooltip": "Index from Loop - zero based"}),
+                "chunk_secs": ("INT", {"default": 10, "tooltip": "Size of each video segment in seconds"}),
                 "variation": ("INT", {"default": 2, "tooltip": "Num seconds variation.  chunks_secs +/- variation adds flexiblity to find silence"}),
                 "source_fps": ("FLOAT", {"default": 30.0, "min": 1.0, "max": 240.0, "step": 0.01,
                                           "tooltip": "TRUE fps of incoming video tensor"}),
                 "target_fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0, "step": 0.01,
-                                          "tooltip": "fps required by LTX- usually 25"}),
+                                          "tooltip": "fps required by target model - 25 for LTX, 16 for WAN (typical)"}),
+
             },
             "optional": {
                 "start_time_override": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 999999.0, "step": 0.001,
                                                     "tooltip": "Use -1 for index 0, used to maintain exact timing of chunks."}),
+                "model_type": (["LTX", "WAN"], {"default": "LTX",
+                                                    "tooltip": "Target model frame-count boundary: LTX=8n+1, WAN=4n+1"}),
             },
         }
- 
+
     RETURN_TYPES = ("INT",          "IMAGE",         "AUDIO",       "INT",           "FLOAT",           "FLOAT",           "FLOAT",            "INT",)
-    RETURN_NAMES = ("num_chunks", "chunkOImages", "chunkOfAudio", "numberFrames", "actual_end_time", "actual_start_time", "chunk_duration", "numLTXFrames",)
+    RETURN_NAMES = ("num_chunks", "chunkOImages", "chunkOfAudio", "numberFrames", "actual_end_time", "actual_start_time", "chunk_duration", "numGenerationFrames",)
+        # Add tooltips corresponding to each output slot
+    OUTPUT_TOOLTIPS = (
+        "Number Chunks Calculated for the Video.",
+        "Video",
+        "Audio",
+        "# Frames after Snapping",
+        "end time in video of chunk",
+        "start time of chunk in video",
+        "length of chunk",
+        "num Frames requested by user w/o snapping",
+
+    )
+
+
+    
     FUNCTION = "get_video_chunk_at_index"
     CATEGORY = "TKNodes"
- 
+
     def get_video_chunk_at_index(self, video, audio, index, chunk_secs, variation,
-                                  source_fps, target_fps, start_time_override=-1.0):
+                                  source_fps, target_fps,  start_time_override=-1.0, model_type="LTX",):
         import torch
- 
+
+        divisor = self.MODEL_DIVISORS.get(model_type, 8)
+
         # 1. Silence-based timing, real seconds, fps-agnostic
         audio_chunker = TKSmartAudioChunker()
         num_chunks, chunk_size, start_time, total_duration = audio_chunker.calculate(
             audio, index, chunk_secs, variation
         )
 
-
         # 1b. Override start_time with the carried actual end of the previous
-        #     chunk, so boundaries stay contiguous regardless of 8n+1 snapping.
+        #     chunk, so boundaries stay contiguous regardless of snapping.
         if start_time_override is not None:
             if start_time_override >= 0.0:
                 start_time = start_time_override
@@ -124,8 +156,8 @@ class TKSmartVideoChunker:
         true_end_frame = max(start_frame + 1, min(true_end_frame, total_frames))
 
         # extend the native window so resampling has enough real frames
-        # to round UP to the next 8n+1 boundary (never short)
-        pad_native_frames = int(round(8 * (source_fps / target_fps))) + 1
+        # to round UP to the next (divisor*n + 1) boundary (never short)
+        pad_native_frames = int(round(divisor * (source_fps / target_fps))) + 1
         end_frame = min(true_end_frame + pad_native_frames, total_frames)
 
         native_chunk = video[start_frame:end_frame]
@@ -148,31 +180,32 @@ class TKSmartVideoChunker:
             src_indices = torch.clamp(src_indices, 0, native_frame_count - 1)
             resampled_chunk = native_chunk[src_indices]
 
-        # 4. Snap to valid LTX frame count (8n+1) - round UP, never down.
-        #    generation_frames = what we ask LTX to generate (always >= true target)
+
+        # 4. Snap to valid frame count for the selected model (divisor*n + 1),
+        #    round UP, never down.
+        #    generation_frames = what we ask the model to generate (always >= true target)
         #    true_target_frame_count = what we trim back down to before writing to disk
         raw_count = resampled_chunk.shape[0]
         generation_frames = min(
             raw_count,
-            8 * ((true_target_frame_count - 1) // 8 + 1) + 1
+            divisor * ((true_target_frame_count - 1) // divisor + 1) + 1
         )
         video_chunk = resampled_chunk[:generation_frames]
         number_frames = min(true_target_frame_count, generation_frames)  # trim target
 
-
- 
         # 5. Slice audio to match, sample-accurate
         exact_video_duration = number_frames / target_fps
-        print(f"[DEBUG] target_fps={target_fps} number_frames={number_frames} exact_video_duration={exact_video_duration}")
+        print(f"[DEBUG] idx={index} model={model_type} divisor={divisor} target_fps={target_fps} "
+              f"user frames={number_frames} snap frames={generation_frames} chunk_duration={exact_video_duration}")
 
         waveform = audio['waveform']
         sample_rate = audio['sample_rate']
         total_samples = waveform.shape[-1]
- 
+
         start_sample = int(round(start_time * sample_rate))
         end_sample = start_sample + int(round(exact_video_duration * sample_rate))
         start_sample = max(0, min(start_sample, total_samples - 1))
- 
+
         if end_sample > total_samples:
             existing_waveform = waveform[..., start_sample:total_samples]
             missing_samples = end_sample - total_samples
@@ -183,16 +216,16 @@ class TKSmartVideoChunker:
             sliced_waveform = torch.cat([existing_waveform, silence_pad], dim=-1)
         else:
             sliced_waveform = waveform[..., start_sample:end_sample]
- 
+
         audio_chunk = {"waveform": sliced_waveform, "sample_rate": sample_rate}
- 
+
         # 6. Carry the real end time forward for the next iteration
         actual_end_time = start_time + exact_video_duration
- 
-        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration, generation_frames,)
- 
- 
- 
+
+        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration, generation_frames, )
+
+
+
 
 # --- THE COMFYUI NODE ---
 class TKSmartAudioChunker:
@@ -213,6 +246,14 @@ class TKSmartAudioChunker:
 
     RETURN_TYPES = ("INT", "FLOAT", "FLOAT", "FLOAT")
     RETURN_NAMES = ("num_chunks", "chunk_size", "start_time", "total_duration")
+    OUTPUT_TOOLTIPS = (
+            "Number Chunks Calculated for the audio.",
+            "length of chunk in seconds",
+            "start time of chunk in audio",
+            "end time in chunk in audio",
+    )
+    
+    
     FUNCTION = "calculate"
     CATEGORY = "HandyNodes-KT"
 

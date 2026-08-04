@@ -1,5 +1,4 @@
-from . import tknodes, misc, speakers, audioChunker
-
+from . import tknodes, misc, speakers, audioChunker, utilnodes
 NODE_CLASS_MAPPINGS = {
     "TKPromptEnhanced": tknodes.TKPromptEnhanced,
     "TKVideoUserInputs": tknodes.TKVideoUserInputs,
@@ -24,6 +23,10 @@ NODE_CLASS_MAPPINGS = {
     "TKCrossDissolve": tknodes.TKCrossDissolve,
     "TKPromptLooper": audioChunker.TKPromptLooper,  
     "TKTrimFrames": tknodes.TKTrimFrames,
+    "TKTransitionDetector": utilnodes.TKTransitionDetector,
+    "TKSnapFrames" : utilnodes.TKSnapFrames,
+    "TKAudioToFPSMatcher" : utilnodes.TKAudioToFPSMatcher,
+
 }
    
 
@@ -39,6 +42,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKAudioFuse": "Audio Merge/Fuse",
      "TKSmartAudioChunker": "Smart Audio Chunker",
      "TKSmartVideoChunker": "Smart Video Chunker",
+     "TKSimpleVideoChunker":"Simple Video Chunker",
      "TKAudioUnwrap": "Audio → Waveform Tensor",
      "TKPrintValueToLog": "Print Value to log",
      "TKSpeakerAudioTrackExtractor": "Extract nTh Audio track",
@@ -52,8 +56,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptLooper": "Prompt Looper",
      "TKCrossDissolve":"Cross Dissolve Effect",
      "TKTrimFrames": "Trim Frames and Audio",
+     "TKTransitionDetector": "Video Transition Detector",
+     "TKSnapFrames" : "Snap Frames to boundry rules",
+     "TKAudioToFPSMatcher" :"Resample Audio for new FPS",
 
 }
+
+
 
 
 WEB_DIRECTORY = "./js"
