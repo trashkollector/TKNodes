@@ -11,14 +11,17 @@ Chunking is required to get around VRAM issues.  For Low VRAM set chunk size low
 
 # TKSmartAudioChunker
 Silence based audio chunker.. used in workflow for Singing or Talking, so it never breaks middle sentence.
+TKSmartVideoChunker will call this node for the audio breaks.
 
 # TKPromptLooper
-A node for looping multiple prompts and avoid messy code.
+A node for looping multiple prompts and avoid messy code.  Up to 4 prompts.  Used for long workflow where you want to swap images and prompts.
 <img width="744" height="384" alt="Screenshot 2026-08-05 132344" src="https://github.com/user-attachments/assets/24463863-72bb-41bc-898d-ffdabc85fa5d" />
 
 # TKAudioToFPSMatcher
 Mismatches between FPS can throw sync off in videos with audio.
-This node fixes the FPS mismatch problem
+This node fixes the FPS mismatch problem.
+Use case: You have a 30fps video with audio...  but you need to create a LTX 24fps video.  
+Use this node to fix the mismatch otherwise your audio will be out of sync.
 <img width="698" height="440" alt="fps" src="https://github.com/user-attachments/assets/e80a63ea-2b6d-4820-9037-99ca235ecd71" />
 
 # TKAudioUnwrap
