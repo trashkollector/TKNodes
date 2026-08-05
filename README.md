@@ -6,21 +6,29 @@ Chunking is required to get around VRAM issues.  For Low VRAM set chunk size low
 
  Silence-based video/audio chunking for LTX 2.3 or Wan 2.2. Slices at native fps, resamples to target_fps, and snaps to a valid frame count
 
+
+<img width="432" height="497" alt="Screenshot 2026-08-05 131620" src="https://github.com/user-attachments/assets/839ac1e9-1feb-44c0-9039-2de24a1dca77" />
+
 # TKSmartAudioChunker
 Silence based audio chunker.. used in workflow for Singing or Talking, so it never breaks middle sentence.
 
 # TKPromptLooper
 A node for looping multiple prompts and avoid messy code.
+<img width="744" height="384" alt="Screenshot 2026-08-05 132344" src="https://github.com/user-attachments/assets/24463863-72bb-41bc-898d-ffdabc85fa5d" />
 
 # TKAudioToFPSMatcher
 Mismatches between FPS can throw sync off in videos with audio.
 This node fixes the FPS mismatch problem
+<img width="698" height="440" alt="fps" src="https://github.com/user-attachments/assets/e80a63ea-2b6d-4820-9037-99ca235ecd71" />
 
 # TKAudioUnwrap
 when working with audio segments, this is needed to consolidate back to 1 waveform.
 
 # TKVideoUserInputs - 
 GUI for collecting inputs for Video related workflow.
+Easily select size with visual feedback.
+![Alt text](assets/tkvideouserinputs.png)
+
 
 # TKPrintValueToLog
 Print value to log, helpful for debug or status of workflow
@@ -33,9 +41,7 @@ Snap frames for LTX or Wan boundry rules
 If you don't snap frames , you might get errors or bad renders.
 This avoid the clumsy math expressions that are normally required in the workflow
 
-# TKVideoUserInputs - 
-GUI for collecting inputs for Video related workflow.
-Easily select size with visual feedback.
+
 
 
 # TKNodes (Handy Nodes for ComfyUI)
@@ -69,7 +75,7 @@ Easily select size with visual feedback.
 
 
 
-![Alt text](assets/tkvideouserinputs.png)
+
 
 
 for manual install
