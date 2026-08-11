@@ -11,6 +11,16 @@ app.registerExtension({
         if (nodeData.name !== "TKMultiImagePrompt") return;
 
         const orig = nodeType.prototype.onNodeCreated;
+        const origOnDragDrop = nodeType.prototype.onDragDrop;
+
+        nodeType.prototype.onDragDrop = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Prevent LiteGraph's default behavior from ever populating
+            // node.imgs (which triggers the big bottom-of-node preview).
+            this.imgs = null;
+            return true;
+        };
 
         nodeType.prototype.onNodeCreated = function () {
             if (orig) orig.apply(this, arguments);
@@ -161,6 +171,48 @@ app.registerExtension({
                     imgBlock.appendChild(placeholder);
                     imgBlock.appendChild(uploadBtn);
                     imgBlock.appendChild(fileInput);
+
+                    //// DRAG AND DROP
+
+                    imgBlock.addEventListener("dragover", (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        imgBlock.style.borderColor = "#888";
+                    });
+
+                    imgBlock.addEventListener("dragleave", (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        imgBlock.style.borderColor = "#444";
+                    });
+
+                    imgBlock.addEventListener("drop", async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        imgBlock.style.borderColor = "#444";
+
+                        const file = e.dataTransfer?.files?.[0];
+                        if (!file || !file.type.startsWith("image/")) return;
+
+                        const result = await uploadFile(file);
+                        if (!result) return;
+
+                        const fullName = result.subfolder
+                            ? `${result.subfolder}/${result.name}`
+                            : result.name;
+
+                        if (imageW.options?.values && !imageW.options.values.includes(fullName)) {
+                            imageW.options.values.push(fullName);
+                        }
+                        imageW.value = fullName;
+
+                        thumb.src = previewUrl(fullName, result.subfolder);
+                        thumb.style.display = "block";
+                        placeholder.style.display = "none";
+
+                        node.setDirtyCanvas(true, true);
+                    });
+                    /////////////////////
 
                     // Prompt textarea block
                     const promptWrap = document.createElement("div");

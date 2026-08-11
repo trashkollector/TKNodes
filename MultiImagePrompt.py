@@ -29,19 +29,19 @@ class TKMultiImagePrompt:
             f for f in os.listdir(input_dir)
             if os.path.isfile(os.path.join(input_dir, f))
         ]
+        files = folder_paths.filter_files_content_types(files, ["image"])
         files = sorted(files)
 
         required = {}
         for i in range(1, cls.NUM_SLOTS + 1):
             # "" is a valid empty selection so slots can be left unfilled.
-            # No "image_upload" flag here on purpose: that flag triggers
-            # ComfyUI's own built-in upload-widget extension, which would add
-            # a second, native upload button on top of our custom JS row.
-            # We handle uploading ourselves in the JS extension instead.
-            required[f"image_{i}"] = ([""] + files, {})
-            required[f"prompt_{i}"] = ("STRING", {"multiline": True, "default": ""})
+            # image_upload=True hooks into ComfyUI's built-in upload widget,
+            # which also enables drag-and-drop onto this widget.
 
+            required[f"prompt_{i}"] = ("STRING", {"multiline": True, "default": ""})
+            required[f"image_{i}"] = ([""] + files, {})
         return {"required": required}
+
 
     CATEGORY = "TKNodes/image"
     RETURN_TYPES = ("TK_IMAGE_PROMPT_LIST",)
