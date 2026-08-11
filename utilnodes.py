@@ -7,7 +7,7 @@ import torch
 import math
 
 
-################  Mainly used for V2V scenarios..  when source video and target video use differnt FPS ##############################
+###############  Mainly used for V2V scenarios..  when source video and target video use differnt FPS ##############################
 class TKAudioToFPSMatcher:
     DESCRIPTION = "Aligns and pads an original audio track to perfectly match the duration of a target FPS video timeline, preventing VHS truncation.  Mainly needed for V2V"
     
@@ -26,9 +26,31 @@ class TKAudioToFPSMatcher:
     FUNCTION = "match_audio_to_video"
     CATEGORY = "TKNodes"
 
+    # --- FUNCTION 1: DROP FRAMES (STRICTLY VIDEO AND TARGET FPS INPUTS) ---
+    def drop_video_frames(self, video, video_fps):
+        # 1. Total frame sequence count coming directly from the image tensor link
+        total_source_frames = video.shape[0]
+        
+        # 2. Extract the physical layout length (seconds) directly from the tensor's native indices
+        # This determines the runtime boundaries natively, removing the hardcoded 30.0
+        calculated_source_fps = total_source_frames / (total_source_frames / video_fps)
+
+        # 3. Calculate exactly how many frames to keep for your 16fps target container limit
+        # Example: (300 total frames * 16fps target) / 30fps dynamic source = 160 frames
+        required_frame_count = math.ceil((total_source_frames * video_fps) / calculated_source_fps)
+
+        if total_source_frames > required_frame_count:
+            # Drops frames mathematically across the tensor index layout to match the container target
+            indices = torch.linspace(0, total_source_frames - 1, steps=required_frame_count, dtype=torch.long, device=video.device)
+            return video[indices]
+        return video
+    
     def match_audio_to_video(self, audio, video, video_fps):
         if audio is None or video is None:
             return (audio, 0.0)
+
+
+        newvideo  = self.drop_video_frames(  video, video_fps)
 
         waveform = audio.get("waveform")  # Shape: [channels, samples]
         sample_rate = audio.get("sample_rate")
@@ -37,7 +59,7 @@ class TKAudioToFPSMatcher:
             return (audio, 0.0)
 
         # 1. Calculate exactly how long the video container is at 16 FPS
-        total_video_frames = video.shape[0]
+        total_video_frames = newvideo.shape[0]
         video_duration_seconds = total_video_frames / video_fps
 
         # 2. Calculate the exact number of audio samples needed for this duration
@@ -58,6 +80,9 @@ class TKAudioToFPSMatcher:
 
         matched_audio = {"waveform": clean_waveform, "sample_rate": sample_rate}
         return (matched_audio, video_duration_seconds)
+
+
+
 
 
 

@@ -1,4 +1,6 @@
-from . import tknodes, misc, speakers, audioChunker, utilnodes
+from . import tknodes, misc, speakers, audioChunker, utilnodes,  MultiImagePrompt
+
+
 NODE_CLASS_MAPPINGS = {
     "TKPromptEnhanced": tknodes.TKPromptEnhanced,
     "TKVideoUserInputs": tknodes.TKVideoUserInputs,
@@ -26,9 +28,11 @@ NODE_CLASS_MAPPINGS = {
     "TKTransitionDetector": utilnodes.TKTransitionDetector,
     "TKSnapFrames" : utilnodes.TKSnapFrames,
     "TKAudioToFPSMatcher" : utilnodes.TKAudioToFPSMatcher,
-
+    "TKMultiImagePrompt": MultiImagePrompt.TKMultiImagePrompt,
+    "TKPromptLooperAdv": audioChunker.TKPromptLooperAdv,
 }
-   
+
+
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -59,6 +63,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKTransitionDetector": "Video Transition Detector",
      "TKSnapFrames" : "Snap Frames to boundry rules",
      "TKAudioToFPSMatcher" :"Resample Audio for new FPS",
+     "TKMultiImagePrompt": "Multi Image + Prompt",
+     "TKPromptLooperAdv": "Prompt Looper Advanced",
 
 }
 

@@ -67,6 +67,71 @@ class TKPromptLooper:
 
 
 
+
+class TKPromptLooperAdv:
+    DESCRIPTION = (
+        "Prompt Looper (List) - Loops through the entries of a "
+        "TK_IMAGE_PROMPT_LIST (e.g. from TKMultiImagePrompt), alternating "
+        "prompt and image for the workflow based on index, wrapping around "
+        "when index exceeds the list length."
+    )
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "index": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1}),
+                "image_prompt_list": ("TK_IMAGE_PROMPT_LIST", ),
+            },
+        }
+
+    RETURN_TYPES = ("INT", "STRING", "IMAGE")
+    RETURN_NAMES = ("index", "prompt", "image")
+    FUNCTION = "getResultsAtIndex"
+    CATEGORY = "TKNodes"
+
+    def getResultsAtIndex(self, index, image_prompt_list):
+
+        # Keep entries sorted by their original slot number so pairing order
+        # is deterministic (image_1 <-> prompt_1, image_2 <-> prompt_2, ...)
+        # even if the incoming list isn't already in slot order.
+        sorted_entries = sorted(
+            image_prompt_list, key=lambda e: e.get("slot", 0)
+        )
+
+        # Only keep entries where BOTH an image and a non-empty prompt are
+        # present. An image with no prompt (or a prompt with no image) is
+        # ignored entirely rather than passed through with a blank pairing.
+        items = []
+        for entry in sorted_entries:
+            prompt = entry.get("prompt")
+            image = entry.get("image")
+
+            if image is None:
+                continue
+            if prompt is None or prompt.strip() == "":
+                continue
+
+            items.append((prompt, image))
+
+        count = len(items)
+        if count == 0:
+            raise ValueError(
+                "TKPromptLooperFromList: no valid prompt/image entries were "
+                "supplied in image_prompt_list."
+            )
+
+        wrapped_index = index % count
+
+        result_prompt, result_image = items[wrapped_index]
+
+        return (wrapped_index, result_prompt, result_image)
+
+
+
+
+
+
 class TKSmartVideoChunker:
     DESCRIPTION = "Silence-based video/audio chunking for LTX 2.3 / Wan 2.2.   Looks for silence in audio to create chunk breaks.   This is helpful when speakers take a breath and we don't cut off speaker while talking. Chunking is required to get around VRAM issues.  For Low VRAM set chunk size lower"
 
