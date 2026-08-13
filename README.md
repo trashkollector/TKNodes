@@ -79,7 +79,9 @@ This avoid the clumsy math expressions that are normally required in the workflo
 
 
 
-
+Manager install
+----------------
+Search for "Handy Nodes" in Comfy Manager
 
 for manual install
 ---------------------
@@ -89,6 +91,8 @@ go to the custom_nodes folder in comfy
 
 git clone https://github.com/trashkollector/TKNodes
 
+Workflows
+https://github.com/trashkollector/TKNodes/tree/main/workflow
 
 
 
