@@ -29,6 +29,7 @@ NODE_CLASS_MAPPINGS = {
     "TKSnapFrames" : utilnodes.TKSnapFrames,
     "TKAudioToFPSMatcher" : utilnodes.TKAudioToFPSMatcher,
     "TKMultiImagePrompt": MultiImagePrompt.TKMultiImagePrompt,
+    "TKMultiImageSelect": MultiImagePrompt.TKMultiImageSelect,
     "TKPromptLooperAdv": audioChunker.TKPromptLooperAdv,
 }
 
@@ -65,6 +66,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKAudioToFPSMatcher" :"Resample Audio for new FPS",
      "TKMultiImagePrompt": "Multi Image + Prompt",
      "TKPromptLooperAdv": "Prompt Looper Advanced",
+     "TKMultiImageSelect": "Multi Image Select",
 
 }
 

@@ -81,17 +81,36 @@ class TKPromptLooperAdv:
         return {
             "required": {
                 "index": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1}),
-                "image_prompt_list": ("TK_IMAGE_PROMPT_LIST", ),
+                
+            },
+            "optional": {
+                "image_prompt_list": ("TK_IMAGE_PROMPT_LIST", {}),
+                "image_list": ("TK_IMAGE_LIST", {}),
             },
         }
 
-    RETURN_TYPES = ("INT", "STRING", "IMAGE")
-    RETURN_NAMES = ("index", "prompt", "image")
+    RETURN_TYPES = ("INT", "STRING", "IMAGE","INT")
+    RETURN_NAMES = ("index", "prompt", "image", "total_cnt")
     FUNCTION = "getResultsAtIndex"
     CATEGORY = "TKNodes"
 
-    def getResultsAtIndex(self, index, image_prompt_list):
+    def getResultsAtIndex(self, index, image_prompt_list=None, image_list=None):
 
+        if (image_prompt_list is not None) :
+            return self.getListWithPrompts(index, image_prompt_list)
+
+        
+        if (image_list is not None) :
+            return self.getListWithoutPrompts(index, image_list)
+        
+        return (0,None,None)
+
+
+    
+
+    def getListWithPrompts(self, index, image_prompt_list):
+
+        print(f" got here in getListWithPrompts")
         # Keep entries sorted by their original slot number so pairing order
         # is deterministic (image_1 <-> prompt_1, image_2 <-> prompt_2, ...)
         # even if the incoming list isn't already in slot order.
@@ -117,7 +136,7 @@ class TKPromptLooperAdv:
         count = len(items)
         if count == 0:
             raise ValueError(
-                "TKPromptLooperFromList: no valid prompt/image entries were "
+                "TKMultiImage: no valid prompt/image entries were "
                 "supplied in image_prompt_list."
             )
 
@@ -125,10 +144,44 @@ class TKPromptLooperAdv:
 
         result_prompt, result_image = items[wrapped_index]
 
-        return (wrapped_index, result_prompt, result_image)
+        return (wrapped_index, result_prompt, result_image, count)
 
 
 
+    def getListWithoutPrompts(self, index, image_list):
+
+        print(f" got here in getListWithoutPrompts")
+        # Keep entries sorted by their original slot number so pairing order
+        # is deterministic (image_1 <-> prompt_1, image_2 <-> prompt_2, ...)
+        # even if the incoming list isn't already in slot order.
+        sorted_entries = sorted(
+            image_list, key=lambda e: e.get("slot", 0)
+        )
+
+        # Only keep entries where BOTH an image and a non-empty prompt are
+        # present. An image with no prompt (or a prompt with no image) is
+        # ignored entirely rather than passed through with a blank pairing.
+        items = []
+        for entry in sorted_entries:
+            image = entry.get("image")
+
+            if image is None:
+                continue
+
+            items.append((image))
+
+        count = len(items)
+        if count == 0:
+            raise ValueError(
+                "TKMultiImage: no images passed in "
+                "supplied in image_list."
+            )
+
+        wrapped_index = index % count
+
+        result_image = items[wrapped_index]
+
+        return (wrapped_index, None, result_image, count)
 
 
 
