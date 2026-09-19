@@ -84,8 +84,9 @@ class TKPromptLooperAdv:
                 
             },
             "optional": {
-                "image_prompt_list": ("TK_IMAGE_PROMPT_LIST", {}),
-                "image_list": ("TK_IMAGE_LIST", {}),
+                "image_prompt_list": ("TK_IMAGE_PROMPT_LIST", {}),  # images + prompts
+                "image_list": ("TK_IMAGE_LIST", {}),                # images only
+                "prompt_list": ("TK_PROMPT_LIST", {}),              # prompts only
             },
         }
 
@@ -94,35 +95,48 @@ class TKPromptLooperAdv:
     FUNCTION = "getResultsAtIndex"
     CATEGORY = "TKNodes"
 
-    def getResultsAtIndex(self, index, image_prompt_list=None, image_list=None):
+    def getResultsAtIndex(self, index, image_prompt_list=None, image_list=None, prompt_list=None):
 
-        if (image_prompt_list is not None) :
-            return self.getListWithPrompts(index, image_prompt_list)
+        # everything null
+        if (image_prompt_list is  None) and (image_list is None) and (prompt_list is None):
+            print(f"Requires an image_prompt_list  OR   image_list    OR   prompt_list   OR    (image_list + prompt_list)")
+            return (0,None,None)
 
         
+        if (image_prompt_list is not None) :
+            return self.getImagePromptAtIndex(index, image_prompt_list)
+
+        
+        if (image_list is not None) and (prompt_list is not None):
+            return self.mergeImagesAndPromptsAtIndex(index, image_list, prompt_list)
+
         if (image_list is not None) :
-            return self.getListWithoutPrompts(index, image_list)
+            return self.getImageAtIndex(index, image_list)
+
+        if (prompt_list is not None) :
+            return self.getPromptAtIndex(index, image_list)
+
         
         return (0,None,None)
 
 
     
 
-    def getListWithPrompts(self, index, image_prompt_list):
+    def getImagePromptAtIndex(self, index, image_prompt_list):
 
         print(f" got here in getListWithPrompts")
         # Keep entries sorted by their original slot number so pairing order
         # is deterministic (image_1 <-> prompt_1, image_2 <-> prompt_2, ...)
         # even if the incoming list isn't already in slot order.
-        sorted_entries = sorted(
-            image_prompt_list, key=lambda e: e.get("slot", 0)
-        )
+        # sorted_entries = sorted(
+        #     image_prompt_list, key=lambda e: e.get("slot", 0)
+        # )
 
         # Only keep entries where BOTH an image and a non-empty prompt are
         # present. An image with no prompt (or a prompt with no image) is
         # ignored entirely rather than passed through with a blank pairing.
         items = []
-        for entry in sorted_entries:
+        for entry in image_prompt_list:
             prompt = entry.get("prompt")
             image = entry.get("image")
 
@@ -148,21 +162,10 @@ class TKPromptLooperAdv:
 
 
 
-    def getListWithoutPrompts(self, index, image_list):
+    def getImageAtIndex(self, index, image_list):
 
-        print(f" got here in getListWithoutPrompts")
-        # Keep entries sorted by their original slot number so pairing order
-        # is deterministic (image_1 <-> prompt_1, image_2 <-> prompt_2, ...)
-        # even if the incoming list isn't already in slot order.
-        sorted_entries = sorted(
-            image_list, key=lambda e: e.get("slot", 0)
-        )
-
-        # Only keep entries where BOTH an image and a non-empty prompt are
-        # present. An image with no prompt (or a prompt with no image) is
-        # ignored entirely rather than passed through with a blank pairing.
         items = []
-        for entry in sorted_entries:
+        for entry in image_list:
             image = entry.get("image")
 
             if image is None:
@@ -183,7 +186,73 @@ class TKPromptLooperAdv:
 
         return (wrapped_index, None, result_image, count)
 
+    
+    def mergeImagesAndPromptsAtIndex(self, index, image_list, prompt_list):
+        print(f"inside mergeImagesAndPromptsAtIndex ")
+        # Extract valid images
+        images = []
+        for entry in image_list:
+            image = entry.get("image")
+            if image is None:
+                continue
+            images.append(image)
 
+        # Extract valid prompts
+        prompts = []
+        for entry in prompt_list:
+            prompt = entry.get("prompt")
+            if prompt is None or prompt.strip() == "":
+                continue
+            prompts.append(prompt)
+
+        image_count = len(images)
+        prompt_count = len(prompts)
+
+        if image_count == 0:
+            raise ValueError(
+                "TKMultiImage: no images passed in image_list."
+            )
+        if prompt_count == 0:
+            raise ValueError(
+                "TKMultiPrompt: no valid prompts passed in prompt_list."
+            )
+
+        total_cnt = max(image_count, prompt_count)
+
+        if image_count >= prompt_count:
+            # Images are the larger (or equal) collection - index wraps on images,
+            # prompts advance in blocks.
+            wrapped_image_index = index % image_count
+            prompt_index = index % prompt_count
+        else:
+            prompt_index = index % prompt_count
+            wrapped_image_index = index % image_count
+
+        result_image = images[wrapped_image_index]
+        result_prompt = prompts[prompt_index]
+
+        return (wrapped_image_index, result_prompt, result_image, total_cnt)
+
+
+
+    def getPromptAtIndex(self, index, prompt_list):
+        items = []
+        for entry in prompt_list:
+            prompt = entry.get("prompt")
+
+            if prompt is None:
+                continue
+
+            items.append((prompt))
+
+        count = len(items)
+        if count == 0:
+            raise ValueError(
+                "TKMultiPrompt: no text passed in "
+                
+            )
+
+        
 
 class TKSmartVideoChunker:
     DESCRIPTION = "Silence-based video/audio chunking for LTX 2.3 / Wan 2.2.   Looks for silence in audio to create chunk breaks.   This is helpful when speakers take a breath and we don't cut off speaker while talking. Chunking is required to get around VRAM issues.  For Low VRAM set chunk size lower"

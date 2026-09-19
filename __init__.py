@@ -30,6 +30,7 @@ NODE_CLASS_MAPPINGS = {
     "TKAudioToFPSMatcher" : utilnodes.TKAudioToFPSMatcher,
     "TKMultiImagePrompt": MultiImagePrompt.TKMultiImagePrompt,
     "TKMultiImageSelect": MultiImagePrompt.TKMultiImageSelect,
+    "TKMultiPrompt": MultiImagePrompt.TKMultiPrompt,
     "TKPromptLooperAdv": audioChunker.TKPromptLooperAdv,
 }
 
@@ -67,6 +68,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKMultiImagePrompt": "Multi Image + Prompt",
      "TKPromptLooperAdv": "Prompt Looper Advanced",
      "TKMultiImageSelect": "Multi Image Select",
+     "TKMultiPrompt": "Multi Prompt",
 
 }
 

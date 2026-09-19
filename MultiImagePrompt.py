@@ -244,3 +244,80 @@ class TKMultiImageSelect:
             if image_name and not folder_paths.exists_annotated_filepath(image_name):
                 return f"Invalid image file for slot {i}: {image_name}"
         return True
+
+
+
+
+
+
+
+
+
+
+class TKMultiPrompt:
+    DESCRIPTION = "Used for purpose of looping thru a collection of Prompts.  See also, TKMultiImagePrompt, and TKMultiImageSelect for similar features.  "
+
+    """
+         Allows you to set up multiple prompts, this can then be used together with TKMultiImageSelect to randomize prompts for images
+    """
+
+    NUM_SLOTS = 4
+
+    @classmethod
+    def INPUT_TYPES(cls):
+
+        required = {}
+        for i in range(1, cls.NUM_SLOTS + 1):
+            required[f"prompt_{i}"] = ("STRING", {"multiline": True, "default": ""})
+
+        optional = {
+            "prompt_list": ("TK_PROMPT_LIST",),
+        }
+
+        return {"required": required, "optional": optional}
+
+
+    CATEGORY = "TKNodes/prompt"
+    RETURN_TYPES = ("TK_PROMPT_LIST",)
+    RETURN_NAMES = ("prompt_list",)
+    FUNCTION = "collect"
+
+    def collect(self, prompt_list=None, **kwargs):
+        results = []
+
+        if prompt_list:
+            results.extend(prompt_list)
+
+        for i in range(1, self.NUM_SLOTS + 1):
+            prompt_text = kwargs.get(f"prompt_{i}", "")
+
+
+            results.append({
+                "prompt": prompt_text,
+                "slot": i,
+            })
+
+        return (results,)
+
+    @classmethod
+    def IS_CHANGED(cls, prompt_list=None, **kwargs):
+        m = hashlib.sha256()
+        for i in range(1, cls.NUM_SLOTS + 1):
+            prompt_text = kwargs.get(f"prompt_{i}", "") or ""
+
+            m.update(prompt_text.encode("utf-8"))
+
+        # Account for upstream chain changes too, so this node re-runs if
+        # an earlier node in the chain changes even though its own
+        # slots are unchanged.
+        if prompt_list:
+            m.update(str(len(prompt_list)).encode("utf-8"))
+            for entry in prompt_list:
+                m.update((entry.get("prompt") or "").encode("utf-8"))
+
+        return m.digest().hex()
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
