@@ -3,6 +3,11 @@ import { api } from "../../scripts/api.js";
 
 console.log("[TKMultiImagePrompt] JS LOADED");
 
+// Changes on every page load. Used as the default cache-buster so thumbnails
+// are never stale after a browser refresh or reopening a workflow, but are
+// NOT re-downloaded on every canvas redraw.
+const PAGE_BUST = Date.now();
+
 app.registerExtension({
     name: "extTKMultiImagePrompt",
     canvasOnly: true,  // tells Node 2.0 to skip this extension, uses legacy canvas rendering
@@ -10,8 +15,7 @@ app.registerExtension({
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
         if (nodeData.name !== "TKMultiImagePrompt") return;
 
-        const orig = nodeType.prototype.onNodeCreated;
-        const origOnDragDrop = nodeType.prototype.onDragDrop;
+        const origOnNodeCreated = nodeType.prototype.onNodeCreated;
 
         nodeType.prototype.onDragDrop = function (e) {
             e.preventDefault();
@@ -23,14 +27,14 @@ app.registerExtension({
         };
 
         nodeType.prototype.onNodeCreated = function () {
-            if (orig) orig.apply(this, arguments);
+            if (origOnNodeCreated) origOnNodeCreated.apply(this, arguments);
 
             const node = this;
 
             setTimeout(() => {
                 const NUM_SLOTS = 4;
 
-                node.tkSlots = []; // [{ imageW, thumb, placeholder, promptW, textarea }, ...]
+                node.tkSlots = []; // [{ imageW, thumb, placeholder, promptW, textarea, bust }, ...]
 
                 const hideWidget = (w) => {
                     w.computeSize = () => [0, -4];
@@ -56,14 +60,25 @@ app.registerExtension({
                     return await resp.json(); // { name, subfolder, type }
                 };
 
-                const previewUrl = (name, subfolder = "") => {
-                    return api.apiURL(
-                        `/view?filename=${encodeURIComponent(name)}&type=input&subfolder=${encodeURIComponent(subfolder)}`
-                    );
+                // Takes the full widget value ("name.png" or "sub/name.png") and
+                // splits it into filename + subfolder for the /view endpoint.
+                // `bust` is appended so a re-uploaded file with the same name
+                // gets a different URL and the browser fetches it fresh.
+                const previewUrl = (fullName, bust = "") => {
+                    const i = fullName.lastIndexOf("/");
+                    const subfolder = i === -1 ? "" : fullName.slice(0, i);
+                    const name = i === -1 ? fullName : fullName.slice(i + 1);
+                    let url =
+                        `/view?filename=${encodeURIComponent(name)}` +
+                        `&type=input&subfolder=${encodeURIComponent(subfolder)}`;
+                    if (bust) url += `&t=${bust}`;
+                    return api.apiURL(url);
                 };
 
                 // ---- Single source of truth for "widget value -> what's drawn" ----
-                const setSlotImage = (slot, fullName, subfolder = "") => {
+                // Pass a fresh `bust` (e.g. Date.now()) ONLY when a new file was just
+                // uploaded. Otherwise the slot's remembered bust (or PAGE_BUST) is used.
+                const setSlotImage = (slot, fullName, bust = "") => {
                     const { imageW, thumb, placeholder } = slot;
 
                     if (imageW.options?.values && fullName && !imageW.options.values.includes(fullName)) {
@@ -72,11 +87,13 @@ app.registerExtension({
                     imageW.value = fullName || "";
 
                     if (fullName) {
-                        thumb.src = previewUrl(fullName, subfolder);
+                        if (bust) slot.bust = bust;
+                        thumb.src = previewUrl(fullName, slot.bust || PAGE_BUST);
                         thumb.style.display = "block";
                         placeholder.style.display = "none";
                     } else {
-                        thumb.src = "";
+                        slot.bust = "";
+                        thumb.removeAttribute("src");
                         thumb.style.display = "none";
                         placeholder.style.display = "flex";
                     }
@@ -88,9 +105,25 @@ app.registerExtension({
                     textarea.value = promptW.value;
                 };
 
+                // Shared by both the "browse" button and drag-and-drop.
+                const handleFile = async (slot, file) => {
+                    if (!file || !file.type.startsWith("image/")) return;
+
+                    const result = await uploadFile(file);
+                    if (!result) return;
+
+                    const fullName = result.subfolder
+                        ? `${result.subfolder}/${result.name}`
+                        : result.name;
+
+                    // Date.now() is the cache-buster: same filename, new URL.
+                    setSlotImage(slot, fullName, Date.now());
+                    node.setDirtyCanvas(true, true);
+                };
+
                 const updateGrid = () => {
                     for (const slot of node.tkSlots) {
-                        setSlotImage(slot, slot.imageW.value, "");
+                        setSlotImage(slot, slot.imageW.value);
                         setSlotPrompt(slot, slot.promptW.value);
                     }
                     node.setDirtyCanvas(true, true);
@@ -110,69 +143,69 @@ app.registerExtension({
                     // ---- Build the row ----
                     const row = document.createElement("div");
                     row.style.cssText = `
-                display: flex;
-                gap: 6px;
-                width: 100%;
-                align-items: stretch;
-                box-sizing: border-box;
-                padding: 3px 0;
-            `;
+                        display: flex;
+                        gap: 6px;
+                        width: 100%;
+                        align-items: stretch;
+                        box-sizing: border-box;
+                        padding: 3px 0;
+                    `;
 
                     // Thumbnail + upload button block
                     const imgBlock = document.createElement("div");
                     imgBlock.style.cssText = `
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 4px;
-                background: #2a2a2a;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 5px;
-                width: 136px;
-                flex-shrink: 0;
-                box-sizing: border-box;
-            `;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        gap: 4px;
+                        background: #2a2a2a;
+                        border: 1px solid #444;
+                        border-radius: 4px;
+                        padding: 5px;
+                        width: 136px;
+                        flex-shrink: 0;
+                        box-sizing: border-box;
+                    `;
 
                     const thumb = document.createElement("img");
                     thumb.style.cssText = `
-                width: 124px;
-                height: 124px;
-                object-fit: contain;
-                border-radius: 3px;
-                background: #1a1a1a;
-                display: ${imageW.value ? "block" : "none"};
-            `;
+                        width: 124px;
+                        height: 124px;
+                        object-fit: contain;
+                        border-radius: 3px;
+                        background: #1a1a1a;
+                        display: ${imageW.value ? "block" : "none"};
+                    `;
                     if (imageW.value) {
-                        thumb.src = previewUrl(imageW.value);
+                        thumb.src = previewUrl(imageW.value, PAGE_BUST);
                     }
 
                     const placeholder = document.createElement("div");
                     placeholder.textContent = `#${i}`;
                     placeholder.style.cssText = `
-                width: 124px;
-                height: 124px;
-                display: ${imageW.value ? "none" : "flex"};
-                align-items: center;
-                justify-content: center;
-                color: #666;
-                font-size: 13px;
-                background: #1a1a1a;
-                border-radius: 3px;
-            `;
+                        width: 124px;
+                        height: 124px;
+                        display: ${imageW.value ? "none" : "flex"};
+                        align-items: center;
+                        justify-content: center;
+                        color: #666;
+                        font-size: 13px;
+                        background: #1a1a1a;
+                        border-radius: 3px;
+                    `;
 
                     const uploadBtn = document.createElement("button");
                     uploadBtn.textContent = "browse";
                     uploadBtn.style.cssText = `
-                width: 100%;
-                font-size: 10px;
-                padding: 2px 0;
-                background: #3a3a3a;
-                border: 1px solid #555;
-                border-radius: 3px;
-                color: #ddd;
-                cursor: pointer;
-            `;
+                        width: 100%;
+                        font-size: 10px;
+                        padding: 2px 0;
+                        background: #3a3a3a;
+                        border: 1px solid #555;
+                        border-radius: 3px;
+                        color: #ddd;
+                        cursor: pointer;
+                    `;
 
                     const fileInput = document.createElement("input");
                     fileInput.type = "file";
@@ -182,46 +215,40 @@ app.registerExtension({
                     // Prompt textarea block
                     const promptWrap = document.createElement("div");
                     promptWrap.style.cssText = `
-                flex: 1;
-                display: flex;
-                min-width: 0;
-            `;
+                        flex: 1;
+                        display: flex;
+                        min-width: 0;
+                    `;
 
                     const textarea = document.createElement("textarea");
                     textarea.value = promptW.value ?? "";
                     textarea.placeholder = `prompt_${i}`;
                     textarea.style.cssText = `
-                flex: 1;
-                min-width: 0;
-                min-height: 150px;
-                resize: vertical;
-                background: #2a2a2a;
-                border: 1px solid #444;
-                border-radius: 4px;
-                color: #fff;
-                font-size: 11px;
-                padding: 4px 6px;
-                box-sizing: border-box;
-                outline: none;
-            `;
+                        flex: 1;
+                        min-width: 0;
+                        min-height: 150px;
+                        resize: vertical;
+                        background: #2a2a2a;
+                        border: 1px solid #444;
+                        border-radius: 4px;
+                        color: #fff;
+                        font-size: 11px;
+                        padding: 4px 6px;
+                        box-sizing: border-box;
+                        outline: none;
+                    `;
 
                     // register this slot so clear/update can reach it
-                    const slot = { imageW, thumb, placeholder, promptW, textarea };
+                    const slot = { imageW, thumb, placeholder, promptW, textarea, bust: "" };
                     node.tkSlots.push(slot);
 
+                    // ---- Browse button ----
                     fileInput.addEventListener("change", async () => {
                         const file = fileInput.files?.[0];
-                        if (!file) return;
-
-                        const result = await uploadFile(file);
-                        if (!result) return;
-
-                        const fullName = result.subfolder
-                            ? `${result.subfolder}/${result.name}`
-                            : result.name;
-
-                        setSlotImage(slot, fullName, result.subfolder);
-                        node.setDirtyCanvas(true, true);
+                        // Reset so picking the same file again still fires "change".
+                        // (The File object we already grabbed stays valid.)
+                        fileInput.value = "";
+                        await handleFile(slot, file);
                     });
 
                     uploadBtn.addEventListener("click", () => fileInput.click());
@@ -231,8 +258,7 @@ app.registerExtension({
                     imgBlock.appendChild(uploadBtn);
                     imgBlock.appendChild(fileInput);
 
-                    //// DRAG AND DROP
-
+                    // ---- Drag and drop ----
                     imgBlock.addEventListener("dragover", (e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -251,20 +277,10 @@ app.registerExtension({
                         imgBlock.style.borderColor = "#444";
 
                         const file = e.dataTransfer?.files?.[0];
-                        if (!file || !file.type.startsWith("image/")) return;
-
-                        const result = await uploadFile(file);
-                        if (!result) return;
-
-                        const fullName = result.subfolder
-                            ? `${result.subfolder}/${result.name}`
-                            : result.name;
-
-                        setSlotImage(slot, fullName, result.subfolder);
-                        node.setDirtyCanvas(true, true);
+                        await handleFile(slot, file);
                     });
-                    /////////////////////
 
+                    // ---- Prompt text ----
                     textarea.addEventListener("input", () => {
                         promptW.value = textarea.value;
                     });
@@ -288,18 +304,18 @@ app.registerExtension({
                 const clearBtn = document.createElement("button");
                 clearBtn.textContent = "Clear All";
                 clearBtn.style.cssText = `
-            width: 100%;
-            font-size: 14px;
-            padding: 2px 0;
-            background: #3a3a3a;
-            border: 1px solid #555;
-            border-radius: 3px;
-            color: #ddd;
-            cursor: pointer;
-        `;
+                    width: 100%;
+                    font-size: 14px;
+                    padding: 2px 0;
+                    background: #3a3a3a;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    color: #ddd;
+                    cursor: pointer;
+                `;
                 clearBtn.onclick = () => {
                     for (const slot of node.tkSlots) {
-                        setSlotImage(slot, "", "");
+                        setSlotImage(slot, "");
                         setSlotPrompt(slot, "");
                     }
                     updateGrid();
