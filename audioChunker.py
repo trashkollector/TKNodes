@@ -99,7 +99,6 @@ class TKPromptLooperAdv:
 
         # everything null
         if (image_prompt_list is  None) and (image_list is None) and (prompt_list is None):
-            print(f"Requires an image_prompt_list  OR   image_list    OR   prompt_list   OR    (image_list + prompt_list)")
             return (0,None,None)
 
         
@@ -123,8 +122,6 @@ class TKPromptLooperAdv:
     
 
     def getImagePromptAtIndex(self, index, image_prompt_list):
-
-        print(f" got here in getListWithPrompts")
         # Keep entries sorted by their original slot number so pairing order
         # is deterministic (image_1 <-> prompt_1, image_2 <-> prompt_2, ...)
         # even if the incoming list isn't already in slot order.
@@ -188,7 +185,6 @@ class TKPromptLooperAdv:
 
     
     def mergeImagesAndPromptsAtIndex(self, index, image_list, prompt_list):
-        print(f"inside mergeImagesAndPromptsAtIndex ")
         # Extract valid images
         images = []
         for entry in image_list:
