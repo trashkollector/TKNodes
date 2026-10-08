@@ -137,8 +137,6 @@ class TKPromptEnhanced:
         return (pos,negative_prompt)
         
 
-    
-     
 class TKVideoUserInputs:
     def __init__(self):
         pass
@@ -177,6 +175,54 @@ class TKVideoUserInputs:
         
 
         return (width, height, total_frames, fps, returnSecs )
+
+    
+
+class TKVideoUserInputsV2:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "width":  ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
+                "height": ("INT", {"default": 1280, "min": 100, "max": 1288, "step": 32}),
+                "num_seconds": ("FLOAT", {"default": 5.0, "min": 2.0, "max": 1000, "tooltip": "This value applies when length_selector = Use Seconds"}),
+                "model_type": (["LTX", "WAN"], {
+                    "default": "LTX",
+                    "tooltip": "Target model frame-count boundary: LTX=8n+1, WAN=4n+1, None=no snapping"
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("INT", "INT", "INT", "FLOAT", "FLOAT")
+    RETURN_NAMES = ("video_width", "video_height", "total_frames", "fps", "total_secs")
+    FUNCTION = "main"
+    CATEGORY = "TKNodes"
+    DESCRIPTION = "GUI for setting video resolution, frames, duration"
+
+    # frames must be (step * n + 1) for these models
+    FRAME_STEP = {"LTX": 8, "WAN": 4}
+
+    def main(self, width, height,  num_seconds, model_type="LTX"):
+
+        fps = 25
+        if (model_type == "WAN"):
+            fps=16
+        
+        total_frames = int(round(fps * num_seconds))
+
+        step = self.FRAME_STEP.get(model_type)
+        if step:
+            n = max(1, int(round((total_frames - 1) / step)))
+            total_frames = n * step + 1
+
+        # report the duration of the frame count actually returned
+        total_seconds = float(total_frames) / fps
+
+        return (width, height, total_frames, fps, total_seconds)
+
 
 
 
@@ -349,17 +395,18 @@ class TKCrossDissolve:
 
 
 class TKTrimFrames:
-    DESCRIPTION = "Trim an image sequence and/or matching audio down to an exact target duration"
+    DESCRIPTION = "Trims video and audio as one unifed action.   Determines this by checking FPS.    "
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "frame_count": ("INT", {"default": 1, "min": 1, "max": 100000, "tooltip": "true target frame count (video)"}),
+                "frame_count": ("INT", {"default": 1, "min": 1, "max": 100000, "tooltip": "frames to keep after start_frame"}),
                 "target_fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0}),
             },
             "optional": {
                 "images": ("IMAGE",),
                 "audio": ("AUDIO",),
+                "start_frame": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "frames to cut from the beginning"}),
             }
         }
     RETURN_TYPES = ("IMAGE", "AUDIO")
@@ -367,21 +414,25 @@ class TKTrimFrames:
     FUNCTION = "trim"
     CATEGORY = "TKNodes"
 
-    def trim(self, frame_count, target_fps, images=None, audio=None):
+    def trim(self, frame_count, target_fps, images=None, audio=None, start_frame=0):
+        start_frame = start_frame or 0
+
         out_images = None
         if images is not None:
-            n = min(frame_count, images.shape[0])
-            out_images = images[:n]
+            start = min(start_frame, max(images.shape[0] - 1, 0))
+            out_images = images[start:start + frame_count]
 
         out_audio = None
         if audio is not None:
             waveform = audio["waveform"]
             sample_rate = audio["sample_rate"]
-            target_duration = frame_count / target_fps
-            target_samples = int(round(target_duration * sample_rate))
-            target_samples = min(target_samples, waveform.shape[-1])
+            total = waveform.shape[-1]
+            start_samples = int(round(start_frame / target_fps * sample_rate))
+            start_samples = min(start_samples, max(total - 1, 0))
+            target_samples = int(round(frame_count / target_fps * sample_rate))
+            end_samples = min(start_samples + target_samples, total)
             out_audio = {
-                "waveform": waveform[..., :target_samples],
+                "waveform": waveform[..., start_samples:end_samples],
                 "sample_rate": sample_rate,
             }
 

@@ -4,6 +4,7 @@ from . import tknodes, misc, speakers, audioChunker, utilnodes,  MultiImagePromp
 NODE_CLASS_MAPPINGS = {
     "TKPromptEnhanced": tknodes.TKPromptEnhanced,
     "TKVideoUserInputs": tknodes.TKVideoUserInputs,
+    "TKVideoUserInputsV2": tknodes.TKVideoUserInputsV2,
     "TKPhotoUserInputs": tknodes.TKPhotoUserInputs,
     "TKVideoUserInputsBasic": tknodes.TKVideoUserInputsBasic,
     "TKVideoAudioFuse": misc.TKVideoAudioFuse,
@@ -42,6 +43,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
      "TKCalcLTXFrames":    "Calculate LTX Frames ",
      "TKVideoUserInputs": "Video User Inputs",
+     "TKVideoUserInputsV2": "Video User Inputs - V2",
      "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
      "TKVideoAudioFuse": "Video Audio Fuse",
