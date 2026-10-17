@@ -388,7 +388,7 @@ class TKSmartVideoChunker:
 
         # 5. Slice audio to match, sample-accurate
         exact_video_duration = number_frames / target_fps
-        print(f"[DEBUG] num_chunks={num_chunks}  idx={index} model={model_type} divisor={divisor} target_fps={target_fps} "
+        print(f"[DEBUG] chunk [{index+1} of {num_chunks}]  model={model_type} divisor={divisor} target_fps={target_fps} "
               f"user frames={number_frames} snap frames={generation_frames} chunk_duration={exact_video_duration}")
 
         waveform = audio['waveform']
