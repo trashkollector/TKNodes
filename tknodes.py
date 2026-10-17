@@ -437,7 +437,6 @@ class TKColorMatchTransition:
 
         corrected = (head + w * (matched - head)).clamp(0.0, 1.0).to(curr_scene.dtype)
         out = torch.cat([corrected, curr_scene[n:]], dim=0)
-        print(f"[colormatch] n={n}")
         return (out,)
 
 
