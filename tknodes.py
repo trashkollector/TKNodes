@@ -394,6 +394,55 @@ class TKCrossDissolve:
         return (out,)
 
 
+
+class TKColorMatchTransition:
+    DESCRIPTION = "Matches the color of the start of the current clip to the end of the previous clip, easing back to the original over N frames."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "curr_scene": ("IMAGE", {"tooltip": "the current video segment (the one that gets color-corrected). "}),
+                "prev_scene": ("IMAGE", {"tooltip": "previous video segment. if empty, curr_scene passes through unchanged. "}),
+                "numTransitionFrames": ("INT", {"default": 20, "min": 0, "max": 1000, "tooltip": "number of frames at the start of curr_scene to correct. if <=0, uses the full length of curr_scene."}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "match"
+    CATEGORY = "TKNodes"
+
+    def match(self, curr_scene, prev_scene, numTransitionFrames):
+
+        if prev_scene is None or prev_scene.shape[0] == 0:
+            return (curr_scene,)
+
+        total = curr_scene.shape[0]
+        n = total if numTransitionFrames <= 0 else min(numTransitionFrames, total)
+
+        # measure color of the last frames of prev and the first frames of curr
+        ref = prev_scene[-5:].to(curr_scene.device).float()
+        src = curr_scene[:5].float()
+        ref_mean, ref_std = ref.mean(dim=(0, 1, 2)), ref.std(dim=(0, 1, 2))
+        src_mean, src_std = src.mean(dim=(0, 1, 2)), src.std(dim=(0, 1, 2))
+        gain = (ref_std / src_std.clamp(min=1e-4)).clamp(0.5, 2.0)
+
+        head = curr_scene[:n].float()
+        matched = (head - src_mean) * gain + ref_mean
+
+        # 1.0 on the first frame, easing to 0.0 on the last frame of the window
+        alphas = torch.linspace(0, 1, n, device=curr_scene.device)
+        alphas = alphas * alphas * (3 - 2 * alphas)
+        w = (1 - alphas).view(-1, 1, 1, 1)
+
+        corrected = (head + w * (matched - head)).clamp(0.0, 1.0).to(curr_scene.dtype)
+        out = torch.cat([corrected, curr_scene[n:]], dim=0)
+        print(f"[colormatch] n={n}")
+        return (out,)
+
+
+
+
 class TKTrimFrames:
     DESCRIPTION = "Trims video and audio as one unifed action.   Determines this by checking FPS.    "
     @classmethod
@@ -439,3 +488,54 @@ class TKTrimFrames:
         return (out_images, out_audio)
 
 
+
+COEFFS = {
+    "bt709": (0.2126, 0.7152, 0.0722),
+    "bt601": (0.2990, 0.5870, 0.1140),
+}
+
+def luma(img, m):
+    kr, kg, kb = COEFFS[m]
+    return (img[..., 0] * kr + img[..., 1] * kg + img[..., 2] * kb).unsqueeze(-1)
+
+class TKLumaChromaMerge:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "luma_images": ("IMAGE",),    # sharp B&W
+            "color_images": ("IMAGE",),   # colorized
+            "luma_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            "matrix": (["bt709", "bt601"],),
+            "chunk": ("INT", {"default": 32, "min": 1, "max": 512}),
+        }}
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "merge"
+    CATEGORY = "image/color"
+
+    def merge(self, luma_images, color_images, luma_strength, matrix, chunk):
+        
+        n = min(luma_images.shape[0], color_images.shape[0])
+        h, w = luma_images.shape[1:3]
+        out = []
+        for i in range(0, n, chunk):
+            end = min(i + chunk, n)
+            bw = luma_images[i:end, ..., :3]
+            co = color_images[i:end, ..., :3]
+
+            if co.shape[1:3] != (h, w):
+                co = F.interpolate(co.permute(0, 3, 1, 2), size=(h, w),
+                                mode="bicubic", align_corners=False).permute(0, 2, 3, 1)
+            y_co = luma(co, matrix)
+            y_t = y_co + (luma(bw, matrix) - y_co) * luma_strength
+            chroma = co - y_co
+
+            # desaturate toward gray only as much as needed to stay in range
+            eps = 1e-6
+            big = torch.full_like(chroma, 1e9)
+            k_hi = torch.where(chroma > eps, (1 - y_t) / chroma.clamp(min=eps), big)
+            k_lo = torch.where(chroma < -eps, (-y_t) / chroma.clamp(max=-eps), big)
+            k = torch.minimum(k_hi, k_lo).min(dim=-1, keepdim=True).values.clamp(0, 1)
+
+            out.append((y_t + chroma * k).clamp(0, 1).cpu())
+        return (torch.cat(out, dim=0),)

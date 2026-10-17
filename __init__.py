@@ -33,13 +33,16 @@ NODE_CLASS_MAPPINGS = {
     "TKMultiImageSelect": MultiImagePrompt.TKMultiImageSelect,
     "TKMultiPrompt": MultiImagePrompt.TKMultiPrompt,
     "TKPromptLooperAdv": audioChunker.TKPromptLooperAdv,
+    "TKColorMatchTransition": tknodes.TKColorMatchTransition,
+    "TKLumaChromaMerge": tknodes.TKLumaChromaMerge,
 }
-
 
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
+     "TKLumaChromaMerge": "Luma/Chroma Merge - Used for Colorization",
      "TKPromptEnhanced": "Enhanced Prompt with camera descriptives",
+     "TKColorMatchTransition": "Color-based Transition",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
      "TKCalcLTXFrames":    "Calculate LTX Frames ",
      "TKVideoUserInputs": "Video User Inputs",

@@ -325,6 +325,7 @@ class TKSmartVideoChunker:
             audio, index, chunk_secs, variation
         )
 
+
         # 1b. Override start_time with the carried actual end of the previous
         #     chunk, so boundaries stay contiguous regardless of snapping.
         if start_time_override is not None:
@@ -333,6 +334,15 @@ class TKSmartVideoChunker:
 
         # 2. Slice video at native fps
         total_frames = video.shape[0]
+
+        # Warn if audio length exceeds video
+        video_duration = total_frames / source_fps
+        if start_time >= video_duration - 1.0 / target_fps:
+            raise ValueError(
+                f"Chunk {index} starts at {start_time:.2f}s but video is only "
+                f"{video_duration:.2f}s. Check source_fps ({source_fps}) vs. the loaded tensor."
+            )
+
         start_frame = int(round(start_time * source_fps))
         true_end_frame = int(round((start_time + chunk_size) * source_fps))
         start_frame = max(0, min(start_frame, total_frames - 1))
@@ -378,7 +388,7 @@ class TKSmartVideoChunker:
 
         # 5. Slice audio to match, sample-accurate
         exact_video_duration = number_frames / target_fps
-        print(f"[DEBUG] idx={index} model={model_type} divisor={divisor} target_fps={target_fps} "
+        print(f"[DEBUG] num_chunks={num_chunks}  idx={index} model={model_type} divisor={divisor} target_fps={target_fps} "
               f"user frames={number_frames} snap frames={generation_frames} chunk_duration={exact_video_duration}")
 
         waveform = audio['waveform']
