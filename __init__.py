@@ -26,23 +26,27 @@ NODE_CLASS_MAPPINGS = {
     "TKCrossDissolve": tknodes.TKCrossDissolve,
     "TKPromptLooper": audioChunker.TKPromptLooper,  
     "TKTrimFrames": tknodes.TKTrimFrames,
-    "TKTransitionDetector": utilnodes.TKTransitionDetector,
+
     "TKSnapFrames" : utilnodes.TKSnapFrames,
     "TKAudioToFPSMatcher" : utilnodes.TKAudioToFPSMatcher,
     "TKMultiImagePrompt": MultiImagePrompt.TKMultiImagePrompt,
     "TKMultiImageSelect": MultiImagePrompt.TKMultiImageSelect,
     "TKMultiPrompt": MultiImagePrompt.TKMultiPrompt,
     "TKPromptLooperAdv": audioChunker.TKPromptLooperAdv,
-    "TKColorMatchTransition": tknodes.TKColorMatchTransition,
-    "TKLumaChromaMerge": tknodes.TKLumaChromaMerge,
+    
+    "TKTransitionDetector": utilnodes.TKTransitionDetector,
+    "TKTransitionDetectorChunk": utilnodes.TKTransitionDetectorChunk,
+    "TKTransitionScenesCount": utilnodes.TKTransitionScenesCount,
 }
 
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-     "TKLumaChromaMerge": "Luma/Chroma Merge - Used for Colorization",
+     "TKTransitionDetector": "Video Transition Detector",
+     "TKTransitionDetectorChunk": "Get chunks from Scene Detection",
+     "TKTransitionScenesCount": "Get Num Transition Chunks",
+
      "TKPromptEnhanced": "Enhanced Prompt with camera descriptives",
-     "TKColorMatchTransition": "Color-based Transition",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
      "TKCalcLTXFrames":    "Calculate LTX Frames ",
      "TKVideoUserInputs": "Video User Inputs",
@@ -67,7 +71,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKPromptLooper": "Prompt Looper",
      "TKCrossDissolve":"Cross Dissolve Effect",
      "TKTrimFrames": "Trim Frames and Audio",
-     "TKTransitionDetector": "Video Transition Detector",
+
      "TKSnapFrames" : "Snap Frames to boundry rules",
      "TKAudioToFPSMatcher" :"Resample Audio for new FPS",
      "TKMultiImagePrompt": "Multi Image + Prompt",

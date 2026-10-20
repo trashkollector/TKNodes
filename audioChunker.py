@@ -268,6 +268,7 @@ class TKSmartVideoChunker:
     MODEL_DIVISORS = {
         "LTX": 8,
         "WAN": 4,
+        "NONE": 1,
     }
 
     @classmethod
@@ -288,7 +289,7 @@ class TKSmartVideoChunker:
             "optional": {
                 "start_time_override": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 999999.0, "step": 0.001,
                                                     "tooltip": "Use -1 for index 0, used to maintain exact timing of chunks."}),
-                "model_type": (["LTX", "WAN"], {"default": "LTX",
+                "model_type": (["LTX", "WAN", "NONE"], {"default": "LTX",
                                                     "tooltip": "Target model frame-count boundary: LTX=8n+1, WAN=4n+1"}),
             },
         }
@@ -297,15 +298,14 @@ class TKSmartVideoChunker:
     RETURN_NAMES = ("num_chunks", "chunkOImages", "chunkOfAudio", "numberFrames", "actual_end_time", "actual_start_time", "chunk_duration", "numGenerationFrames",)
         # Add tooltips corresponding to each output slot
     OUTPUT_TOOLTIPS = (
-        "Number Chunks Calculated for the Video.",
-        "Video",
-        "Audio",
-        "# Frames after Snapping",
-        "end time in video of chunk",
-        "start time of chunk in video",
-        "length of chunk",
-        "num Frames requested by user w/o snapping",
-
+        "Number of chunks calculated for the video.",
+        "Video chunk (generation_frames long).",
+        "Audio chunk.",
+        "Trim target: true frame count without snapping. Feed to TKTrimFrames after decode.",
+        "End time of chunk in video.",
+        "Start time of chunk in video.",
+        "Length of chunk.",
+        "Generation frame count (snapped 8n+1). Feed to EmptyLatent, guide and conditioning.",
     )
 
 
@@ -379,17 +379,17 @@ class TKSmartVideoChunker:
         #    generation_frames = what we ask the model to generate (always >= true target)
         #    true_target_frame_count = what we trim back down to before writing to disk
         raw_count = resampled_chunk.shape[0]
-        generation_frames = min(
+        generation_frames_padded = min(
             raw_count,
             divisor * ((true_target_frame_count - 1) // divisor + 1) + 1
         )
-        video_chunk = resampled_chunk[:generation_frames]
-        number_frames = min(true_target_frame_count, generation_frames)  # trim target
+        video_chunk = resampled_chunk[:generation_frames_padded]
+        number_frames = min(true_target_frame_count, generation_frames_padded)  # trim target
 
         # 5. Slice audio to match, sample-accurate
         exact_video_duration = number_frames / target_fps
-        print(f"[DEBUG] chunk [{index+1} of {num_chunks}]  model={model_type} divisor={divisor} target_fps={target_fps} "
-              f"user frames={number_frames} snap frames={generation_frames} chunk_duration={exact_video_duration}")
+        print(f"[DEBUG] chunk [{index+1} of {num_chunks}]  time:{start_time} to {start_time+exact_video_duration} frame range:{start_frame} to {end_frame}  model={model_type} divisor={divisor} target_fps={target_fps} "
+              f"user requested frames={number_frames} snap frames={generation_frames_padded} chunk_duration={exact_video_duration}")
 
         waveform = audio['waveform']
         sample_rate = audio['sample_rate']
@@ -415,7 +415,7 @@ class TKSmartVideoChunker:
         # 6. Carry the real end time forward for the next iteration
         actual_end_time = start_time + exact_video_duration
 
-        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration, generation_frames, )
+        return (num_chunks, video_chunk, audio_chunk, number_frames, actual_end_time, start_time, exact_video_duration, generation_frames_padded, )
 
 
 

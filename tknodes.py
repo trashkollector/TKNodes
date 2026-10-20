@@ -6,6 +6,7 @@ from pydub.silence import detect_silence
 import numpy as np
 import math
 
+
 #  TK Collector -  Various Nodes for Comfy UI, TKPromptEnhanced
 #  August 10, 2025
 #  https://civitai.com/user/trashkollector175
@@ -488,53 +489,3 @@ class TKTrimFrames:
 
 
 
-COEFFS = {
-    "bt709": (0.2126, 0.7152, 0.0722),
-    "bt601": (0.2990, 0.5870, 0.1140),
-}
-
-def luma(img, m):
-    kr, kg, kb = COEFFS[m]
-    return (img[..., 0] * kr + img[..., 1] * kg + img[..., 2] * kb).unsqueeze(-1)
-
-class TKLumaChromaMerge:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "luma_images": ("IMAGE",),    # sharp B&W
-            "color_images": ("IMAGE",),   # colorized
-            "luma_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-            "matrix": (["bt709", "bt601"],),
-            "chunk": ("INT", {"default": 32, "min": 1, "max": 512}),
-        }}
-
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "merge"
-    CATEGORY = "image/color"
-
-    def merge(self, luma_images, color_images, luma_strength, matrix, chunk):
-        
-        n = min(luma_images.shape[0], color_images.shape[0])
-        h, w = luma_images.shape[1:3]
-        out = []
-        for i in range(0, n, chunk):
-            end = min(i + chunk, n)
-            bw = luma_images[i:end, ..., :3]
-            co = color_images[i:end, ..., :3]
-
-            if co.shape[1:3] != (h, w):
-                co = F.interpolate(co.permute(0, 3, 1, 2), size=(h, w),
-                                mode="bicubic", align_corners=False).permute(0, 2, 3, 1)
-            y_co = luma(co, matrix)
-            y_t = y_co + (luma(bw, matrix) - y_co) * luma_strength
-            chroma = co - y_co
-
-            # desaturate toward gray only as much as needed to stay in range
-            eps = 1e-6
-            big = torch.full_like(chroma, 1e9)
-            k_hi = torch.where(chroma > eps, (1 - y_t) / chroma.clamp(min=eps), big)
-            k_lo = torch.where(chroma < -eps, (-y_t) / chroma.clamp(max=-eps), big)
-            k = torch.minimum(k_hi, k_lo).min(dim=-1, keepdim=True).values.clamp(0, 1)
-
-            out.append((y_t + chroma * k).clamp(0, 1).cpu())
-        return (torch.cat(out, dim=0),)
