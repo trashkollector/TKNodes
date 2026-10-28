@@ -717,6 +717,9 @@ class TKLargeVideoChunker:
 
         audio_out = {"waveform": wave.unsqueeze(0), "sample_rate": sr}  # [1, C, S]
 
-        return (number_chunks, images, audio_out, float(fps), images[0])
+          # Extract just the first frame while keeping the 4D batch structure ComfyUI expects
+        first_frame_only = images[0:1]
+
+        return (number_chunks, images, audio_out, float(fps), first_frame_only)
 
 
