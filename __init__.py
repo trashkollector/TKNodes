@@ -37,15 +37,19 @@ NODE_CLASS_MAPPINGS = {
     "TKTransitionDetector": utilnodes.TKTransitionDetector,
     "TKTransitionDetectorChunk": utilnodes.TKTransitionDetectorChunk,
     "TKTransitionScenesCount": utilnodes.TKTransitionScenesCount,
+
+    "TKLargeVideoChunker": tknodes.TKLargeVideoChunker,
 }
 
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
+     "TKLargeVideoChunker": "Large Video Chunker",
+
      "TKTransitionDetector": "Video Transition Detector",
      "TKTransitionDetectorChunk": "Get chunks from Scene Detection",
      "TKTransitionScenesCount": "Get Num Transition Chunks",
-
+     
      "TKPromptEnhanced": "Enhanced Prompt with camera descriptives",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
      "TKCalcLTXFrames":    "Calculate LTX Frames ",

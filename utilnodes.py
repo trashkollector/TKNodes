@@ -4,7 +4,7 @@ import math
 import json
 import torch
 import math
-
+import torch.nn.functional as F
 
 ###############  Mainly used for V2V scenarios..  when source video and target video use differnt FPS ##############################
 class TKAudioToFPSMatcher:
@@ -273,7 +273,7 @@ class TKTransitionDetector:
         ends = starts[1:] + [n]
         mids = [min(n - 1, (s + e) // 2) for s, e in zip(starts, ends)]
         list_segment_images = [images[m:m + 1] for m in mids]
-        segment_batch = torch.cat([images[m:m + 1] for m in mids], dim=0)
+        segment_batch = torch.cat([images[m:m + 1] for m in starts], dim=0)
 
 
         lines = [f"{len(boundaries)} boundaries, {len(starts)} segments "
@@ -651,5 +651,6 @@ class TKTransitionScenesCount:
         starts = _extract_starts(boundary_frames, limit)
         count = len(starts)
         return (count, count - 1)
+
 
 

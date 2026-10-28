@@ -140,23 +140,16 @@ class TKMultiImagePrompt:
 
 
 
-
-
-
-
-
-
-
-
-
+import torch.nn.functional as F  # add to your imports
 
 
 class TKMultiImageSelect:
     DESCRIPTION = "Used for purpose of selecting up to 12 images to feed into a Looping workflow. Use PromptLooperAdv to select the desired image. "
 
     """
-    Upload up to 12 imagest (list length == number of
-    slots actually filled, not always 4).
+    Upload up to 12 images (list length == number of
+    slots actually filled, not always 12).
+    Also outputs all filled slots as a single IMAGE batch.
     """
 
     NUM_SLOTS = 12
@@ -174,17 +167,12 @@ class TKMultiImageSelect:
         required = {}
         for i in range(1, cls.NUM_SLOTS + 1):
             # "" is a valid empty selection so slots can be left unfilled.
-            # image_upload=True hooks into ComfyUI's built-in upload widget,
-            # which also enables drag-and-drop onto this widget.
-
-           
             required[f"image_{i}"] = ([""] + files, {})
         return {"required": required}
 
-
     CATEGORY = "TKNodes/image"
-    RETURN_TYPES = ("TK_IMAGE_LIST",)
-    RETURN_NAMES = ("image_list",)
+    RETURN_TYPES = ("TK_IMAGE_LIST", "IMAGE")
+    RETURN_NAMES = ("image_list", "IMAGES")
     FUNCTION = "collect"
 
     def _load_image(self, filename):
@@ -205,11 +193,33 @@ class TKMultiImageSelect:
         rgb_tensor = torch.from_numpy(rgb_image)[None, ]  # [1, H, W, C]
         return rgb_tensor
 
+    def _make_batch(self, results):
+        if not results:
+            # Nothing selected: return a tiny blank image rather than erroring
+            return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+
+        tensors = [r["image"] for r in results]
+        target_h, target_w = tensors[0].shape[1], tensors[0].shape[2]
+
+        resized = []
+        for t in tensors:
+            if t.shape[1] != target_h or t.shape[2] != target_w:
+                # [1,H,W,C] -> [1,C,H,W] -> resize -> back
+                t = t.permute(0, 3, 1, 2)
+                t = F.interpolate(
+                    t, size=(target_h, target_w),
+                    mode="bilinear", align_corners=False,
+                )
+                t = t.permute(0, 2, 3, 1).clamp(0.0, 1.0)
+            resized.append(t)
+
+        return torch.cat(resized, dim=0)  # [N, H, W, C]
+
     def collect(self, **kwargs):
         results = []
         for i in range(1, self.NUM_SLOTS + 1):
             image_name = kwargs.get(f"image_{i}")
-   
+
             image_tensor = self._load_image(image_name)
             if image_tensor is None:
                 continue  # skip empty slot
@@ -220,21 +230,21 @@ class TKMultiImageSelect:
                 "slot": i,
             })
 
-        return (results,)
+        batch = self._make_batch(results)
+        return (results, batch)
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         m = hashlib.sha256()
         for i in range(1, cls.NUM_SLOTS + 1):
             image_name = kwargs.get(f"image_{i}")
-         
+
             if image_name:
                 image_path = folder_paths.get_annotated_filepath(image_name)
                 if image_path and os.path.exists(image_path):
                     with open(image_path, "rb") as f:
                         m.update(f.read())
 
-            
         return m.digest().hex()
 
     @classmethod
@@ -244,12 +254,6 @@ class TKMultiImageSelect:
             if image_name and not folder_paths.exists_annotated_filepath(image_name):
                 return f"Invalid image file for slot {i}: {image_name}"
         return True
-
-
-
-
-
-
 
 
 
