@@ -28,9 +28,10 @@ Manager a group of images and prompts in a uniform way.   Used together with FOR
 <img width="611" height="694" alt="Screenshot 2026-10-31 124505" src="https://github.com/user-attachments/assets/e7d9ec07-4afe-4639-84bf-2520ce96666d" />
 
 
-# TKPromptLooper
-A node for looping multiple prompts and avoid messy code.  Up to 4 prompts.  Used for long workflow where you want to swap images and prompts.
-<img width="600"  alt="Screenshot 2026-08-05 132344" src="https://github.com/user-attachments/assets/24463863-72bb-41bc-898d-ffdabc85fa5d" />
+# TKPromptLooperAdv
+Prompt Looper can handle unlimited number of images/prompts within a looping construct
+
+<img width="600" alt="Screenshot 2026-10-31 125301" src="https://github.com/user-attachments/assets/37939d48-b5ea-4b2c-9cac-78c09620594e" />
 
 
 # TKSceneDetection
@@ -50,16 +51,28 @@ Print value to log, helpful for debug or status of workflow
 
 
 # TKNodes (Handy Nodes for ComfyUI)
+
+# A dictionary that contains the friendly/humanly readable titles for the nodes
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+     "TKLargeVideoChunker": "Large Video Chunker",
+
+     "TKTransitionDetector": "Video Transition Detector",
+     "TKTransitionDetectorChunk": "Scene Detection - Get Video Chunk at index",
+     "TKTransitionScenesCount": "Scene Detection - Get Total Transitions",
+     
      "TKPromptEnhanced": "Enhanced Prompt with camera descriptives",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",
      "TKCalcLTXFrames":    "Calculate LTX Frames ",
      "TKVideoUserInputs": "Video User Inputs",
+     "TKVideoUserInputsV2": "Video User Inputs - V2",
      "TKPhotoUserInputs": "GUI - Photo User Inputs",
      "TKVideoUserInputsBasic": "Video User Inputs Basic",
      "TKVideoAudioFuse": "Video Audio Fuse",
      "TKAudioFuse": "Audio Merge/Fuse",
      "TKSmartAudioChunker": "Smart Audio Chunker",
      "TKSmartVideoChunker": "Smart Video Chunker",
+     "TKSimpleVideoChunker":"Simple Video Chunker",
      "TKAudioUnwrap": "Audio → Waveform Tensor",
      "TKPrintValueToLog": "Print Value to log",
      "TKSpeakerAudioTrackExtractor": "Extract nTh Audio track",
@@ -73,10 +86,15 @@ Print value to log, helpful for debug or status of workflow
      "TKPromptLooper": "Prompt Looper",
      "TKCrossDissolve":"Cross Dissolve Effect",
      "TKTrimFrames": "Trim Frames and Audio",
-     "TKTransitionDetector": "Video Transition Detector",
+
      "TKSnapFrames" : "Snap Frames to boundry rules",
      "TKAudioToFPSMatcher" :"Resample Audio for new FPS",
+     "TKMultiImagePrompt": "Multi Image + Prompt",
+     "TKPromptLooperAdv": "Prompt Looper Advanced",
+     "TKMultiImageSelect": "Multi Image Select",
+     "TKMultiPrompt": "Multi Prompt",
 
+}
 
 
 
