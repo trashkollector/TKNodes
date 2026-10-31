@@ -5,7 +5,7 @@
 
 # TKLargeVideoChunker
 Used to chunk very large files to avoid out of memory conditions
-<img width="814" height="655" alt="Screenshot 2026-10-31 123957" src="https://github.com/user-attachments/assets/8af55403-179c-4dd3-b0d9-aaeeb53e6b47" />
+<img width="600" alt="Screenshot 2026-10-31 123957" src="https://github.com/user-attachments/assets/8af55403-179c-4dd3-b0d9-aaeeb53e6b47" />
 
 
 
@@ -17,27 +17,26 @@ Chunking is required to get around VRAM issues.  For Low VRAM set chunk size low
  Silence-based video/audio chunking for LTX 2.3 or Wan 2.2. Slices at native fps, resamples to target_fps, and snaps to a valid frame count
 
 
-<img width="432" height="497" alt="Screenshot 2026-08-05 131620" src="https://github.com/user-attachments/assets/839ac1e9-1feb-44c0-9039-2de24a1dca77" />
+<img width="432"  alt="Screenshot 2026-08-05 131620" src="https://github.com/user-attachments/assets/839ac1e9-1feb-44c0-9039-2de24a1dca77" />
 
 # TKSmartAudioChunker
 Silence based audio chunker.. used in workflow for Singing or Talking, so it never breaks middle sentence.
 TKSmartVideoChunker will call this node for the audio breaks.
 
-#TKMultiImagePrompt
+# TKMultiImagePrompt
 Manager a group of images and prompts in a uniform way.   Used together with FOR LOOP START / END
 <img width="611" height="694" alt="Screenshot 2026-10-31 124505" src="https://github.com/user-attachments/assets/e7d9ec07-4afe-4639-84bf-2520ce96666d" />
 
 
-
 # TKPromptLooper
 A node for looping multiple prompts and avoid messy code.  Up to 4 prompts.  Used for long workflow where you want to swap images and prompts.
-<img width="744" height="384" alt="Screenshot 2026-08-05 132344" src="https://github.com/user-attachments/assets/24463863-72bb-41bc-898d-ffdabc85fa5d" />
+<img width="600"  alt="Screenshot 2026-08-05 132344" src="https://github.com/user-attachments/assets/24463863-72bb-41bc-898d-ffdabc85fa5d" />
 
 
 # TKSceneDetection
 Video Scene Detection
 
-<img width="972" height="635" alt="Screenshot 2026-10-31 124133" src="https://github.com/user-attachments/assets/30234a7f-dc77-4a08-a083-e47fbbcf8204" />
+<img width="600" alt="Screenshot 2026-10-31 124133" src="https://github.com/user-attachments/assets/30234a7f-dc77-4a08-a083-e47fbbcf8204" />
 
 
 # TKVideoUserInputs - 
@@ -48,16 +47,6 @@ Easily select size with visual feedback.
 
 # TKPrintValueToLog
 Print value to log, helpful for debug or status of workflow
-
-# TKTransitionDetector  
-Detects scene changes in video, similar to how Davinci works.
-
-# TKSnapFrames  
-Snap frames for LTX or Wan boundry rules
-If you don't snap frames , you might get errors or bad renders.
-This avoid the clumsy math expressions that are normally required in the workflow
-
-
 
 
 # TKNodes (Handy Nodes for ComfyUI)
