@@ -4,7 +4,8 @@
 
 
 # TKLargeVideoChunker
-Used to chunk very large files to avoid out of memory conditions
+Used to chunk very large files to avoid out of memory conditions.   Also chunks audio.  Must run within FOR LOOP/END
+
 <img width="600" alt="Screenshot 2026-10-31 123957" src="https://github.com/user-attachments/assets/8af55403-179c-4dd3-b0d9-aaeeb53e6b47" />
 
 
@@ -23,6 +24,7 @@ Chunking is required to get around VRAM issues.  For Low VRAM set chunk size low
 Silence based audio chunker.. used in workflow for Singing or Talking, so it never breaks middle sentence.
 TKSmartVideoChunker will call this node for the audio breaks.
 
+
 # TKMultiImagePrompt
 Manager a group of images and prompts in a uniform way.   Used together with FOR LOOP START / END
 <img width="611" height="694" alt="Screenshot 2026-10-31 124505" src="https://github.com/user-attachments/assets/e7d9ec07-4afe-4639-84bf-2520ce96666d" />
@@ -40,10 +42,11 @@ Video Scene Detection
 <img width="600" alt="Screenshot 2026-10-31 124133" src="https://github.com/user-attachments/assets/30234a7f-dc77-4a08-a083-e47fbbcf8204" />
 
 
-# TKVideoUserInputs - 
-GUI for collecting inputs for Video related workflow.
-Easily select size with visual feedback.
-![Alt text](assets/tkvideouserinputs.png)
+# TKVideoUserInputsV2
+Convenience node for collection size data for video.
+
+<img width="500" alt="Screenshot 2026-10-31 125749" src="https://github.com/user-attachments/assets/8fe3f31a-51f9-4ed9-9006-d55937a26fd0" />
+
 
 
 # TKPrintValueToLog
