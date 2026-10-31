@@ -47,8 +47,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "TKLargeVideoChunker": "Large Video Chunker",
 
      "TKTransitionDetector": "Video Transition Detector",
-     "TKTransitionDetectorChunk": "Get chunks from Scene Detection",
-     "TKTransitionScenesCount": "Get Num Transition Chunks",
+     "TKTransitionDetectorChunk": "Scene Detection - Get Video Chunk at index",
+     "TKTransitionScenesCount": "Scene Detection - Get Total Transitions",
      
      "TKPromptEnhanced": "Enhanced Prompt with camera descriptives",
      "TKTrimAudioWithBooleans": "Trim Audio (Booleans)",

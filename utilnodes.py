@@ -188,7 +188,7 @@ def _causal_baseline(arr: np.ndarray, window: int, lag: int) -> np.ndarray:
 
 
 """
-Drop-in replacements for TKTransitionDetector and detect_boundaries.
+TKTransitionDetector and detect_boundaries.
 
 Replace ONLY these two items in your file. Everything else stays as is:
 _tensor_batch_to_gray_small, _edge_density, _hist_distance, _causal_baseline
@@ -218,23 +218,26 @@ class TKTransitionDetector:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "chunk_secs": ("FLOAT", {"default": 5.0, "min": 0.5, "max": 120.0, "step": 0.1}),
-                "min_scene_seconds": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 30.0, "step": 0.1}),
+                "chunk_secs": ("FLOAT", {"default": 5.0, "min": 0.5, "max": 120.0, "step": 0.1,"tooltip": "Max size of scene"}),
+                "min_scene_seconds": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 30.0, "step": 0.1,"tooltip": "Min size of scene"}),
                 "fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0, "step": 0.01}),
-                "cut_z_thresh": ("FLOAT", {"default": 3.0, "min": 1.0, "max": 10.0, "step": 0.1}),
-                "dissolve_dip_ratio": ("FLOAT", {"default": 0.70, "min": 0.1, "max": 0.95, "step": 0.01}),
-                "dissolve_min_len": ("INT", {"default": 5, "min": 2, "max": 60}),
-                "analysis_width": ("INT", {"default": 160, "min": 64, "max": 640}),
-                "debug_mode": ("BOOLEAN", {"default": False}),
-                # --- new (kept last so old workflows keep their widget values) ---
-                "split_mode": (["ceil", "round"], {"default": "ceil"}),
-                
+             
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "IMAGE",  "INT", "STRING", "STRING", )
-    RETURN_NAMES = ("segment_images", "listImages", "boundary_frames", "report", "debug_csv", )
-    OUTPUT_IS_LIST = (False, True, True, False, False, True)
+
+    RETURN_TYPES = ("IMAGE",             "IMAGE",              "INT",              "STRING",          "BOOLEAN")
+    RETURN_NAMES = ("transition_images", "listTransitions", "boundary_frames",    "report",      "forced_cut_list")
+    OUTPUT_IS_LIST = (False,              True,                True,               False,              True)
+    OUTPUT_TOOLTIPS  = (
+        "batch of transition images",
+        "LIST of transition images",
+        "LIST of boundary frames - details on where scenes cut",
+        "Report of scene detection.",
+        "LIST of booleans, telling you if large scenes were cut (not at transition) "
+    )
+
+
     FUNCTION = "run"
     CATEGORY = "TKNodes/video"
 
@@ -242,28 +245,21 @@ class TKTransitionDetector:
         self,
         images,
         fps,
-        cut_z_thresh,
-        dissolve_dip_ratio,
-        dissolve_min_len,
-        analysis_width,
-        debug_mode,
         chunk_secs=5.0,
-        split_mode="ceil",
         min_scene_seconds=1.0,
     ):
-        gray_frames = _tensor_batch_to_gray_small(images, analysis_width=analysis_width)
-        baseline_window = max(11, dissolve_min_len * 4 + 1)
+        gray_frames = _tensor_batch_to_gray_small(images, analysis_width=160)
+        baseline_window = max(11, 5 * 4 + 1)
 
         boundaries, debug_rows = detect_boundaries_2(
             gray_frames=gray_frames,
             fps=fps,
-            cut_z_thresh=cut_z_thresh,
-            dissolve_dip_ratio=dissolve_dip_ratio,
-            dissolve_min_len=dissolve_min_len,
+            cut_z_thresh=3.0,
+            dissolve_dip_ratio=0.7,
+            dissolve_min_len=5,
             baseline_window=baseline_window,
-            return_debug=debug_mode,
             chunk_secs=chunk_secs,
-            split_mode=split_mode,
+            split_mode="ceil",
             min_scene_seconds=min_scene_seconds,
         )
 
@@ -271,40 +267,31 @@ class TKTransitionDetector:
         n = int(images.shape[0])
         starts = [0] + [b["frame"] for b in boundaries if b["type"] != "end"]
         ends = starts[1:] + [n]
-        mids = [min(n - 1, (s + e) // 2) for s, e in zip(starts, ends)]
-        list_segment_images = [images[m:m + 1] for m in mids]
-        segment_batch = torch.cat([images[m:m + 1] for m in starts], dim=0)
 
+        list_segment_images = [images[s:s + 1] for s in starts]
+        segment_batch = torch.cat(list_segment_images, dim=0)
 
         lines = [f"{len(boundaries)} boundaries, {len(starts)} segments "
-                 f"(fps={fps}, chunk_secs={chunk_secs}, split_mode={split_mode}):"]
+                f"(fps={fps}, chunk_secs={chunk_secs}, split_mode=ceil):"]
         for b in boundaries:
             lines.append(f"  frame {b['frame']:>6}  t={b['time']:.2f}s  [{b['type']}]")
-        lines.append("segments (start-end, secs, describe-frame):")
-        for s, e, m in zip(starts, ends, mids):
-            lines.append(f"  {s:>6}-{e:<6} {(e - s) / fps:5.2f}s  frame {m}")
+        lines.append("segments (start-end, secs, start-frame):")
+
+        for s, e in zip(starts, ends):
+            lines.append(f"  {s:>6}-{e:<6} {(e - s) / fps:5.2f}s  frame {s}")
         report = "\n".join(lines)
 
         boundary_frames = [b["frame"] for b in boundaries if b["type"] != "end"]
         if not boundary_frames:
             boundary_frames = [b["frame"] for b in boundaries]
 
-        if debug_mode and debug_rows:
-            cols = ["frame", "time", "hist_dist", "z_score", "edge_density",
-                    "edge_baseline", "edge_ratio", "flagged_cut", "flagged_dip"]
-            csv_lines = [",".join(cols)]
-            for r in debug_rows:
-                csv_lines.append(",".join(str(r[c]) for c in cols))
-            debug_csv = "\n".join(csv_lines)
-        else:
-            debug_csv = "debug_mode is off - enable it to get per-frame z_score/edge_ratio values"
-
         non_end = [b for b in boundaries if b["type"] != "end"]
         used = non_end if non_end else boundaries
         boundary_frames = [b["frame"] for b in used]
-        boundary_is_cut = [b["type"] != "forced" for b in used]
+        large_scene_is_cut = [b["type"] != "forced" for b in used]
 
-        return (segment_batch, list_segment_images, boundary_frames, report, debug_csv, boundary_is_cut)
+        return (segment_batch, list_segment_images, boundary_frames, report, large_scene_is_cut)
+        
 
 
 
@@ -440,23 +427,6 @@ def detect_boundaries_2(
 
 
 
-
-"""
-TKChunkFrames - grab one frame every `chunk_secs` seconds from a video.
-
-Drop this file into ComfyUI/custom_nodes/ (or add the classes to TKNodes)
-and restart ComfyUI.
-
-Two nodes:
-  * TKChunkFrames        - takes a VIDEO input (fps is read from the video)
-  * TKChunkFramesImages  - takes an IMAGE batch + fps (for pipelines that
-                           already pass frames around as IMAGE tensors)
-
-Output is an IMAGE *list* (one [1,H,W,C] image per chunk), so downstream
-nodes run once per image. A 15s video with chunk_secs=5 gives 3 images
-(frames at 0s, 5s, 10s).
-"""
-
 import math
 
 
@@ -558,34 +528,35 @@ def _extract_starts(boundaries, total_frames):
 
 
 class TKTransitionDetectorChunk:
+    DESCRIPTION="Get Transition Video and Audio Chunk at index"
     INPUT_IS_LIST = True  # receive the whole boundary list in ONE call
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "index": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
+                "index": ("int", {"default": 0, "min": 0, "max": 100000, "step": 1}),
                 "fps": ("FLOAT", {"default": 24.0, "min": 0.01, "max": 1000.0, "step": 0.01}),
-                "full_video": ("IMAGE",),
+                "video": ("IMAGE",),
                 "boundary_frames": (ANY,),
             },
             "optional": {
-                "full_audio": ("AUDIO",),
+                "audio": ("AUDIO",),
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "AUDIO")
-    RETURN_NAMES = ("chunkOfVideo", "chunkOfAudio")
+    RETURN_TYPES = ("IMAGE",           "AUDIO",       "STRING")
+    RETURN_NAMES = ("chunkOfVideo", "chunkOfAudio",    "filename_prefix")
     FUNCTION = "run"
     CATEGORY = "TKNodes"
 
-    def run(self, index, fps, full_video, boundary_frames, full_audio=None):
+    def run(self, index, fps, video, boundary_frames, audio=None):
         index = int(_one(index) or 0)
         fps = float(_one(fps) or 24.0)
-        full_video = _one(full_video)
+        full_video = _one(video)
         if full_video is None:
             raise ValueError("TKTransitionDetectorChunk: full_video is required")
-        full_audio = _one(full_audio)
+        full_audio = _one(audio)
         total = int(full_video.shape[0])
         starts = _extract_starts(boundary_frames, total)
         seg_count = len(starts)
@@ -599,6 +570,7 @@ class TKTransitionDetectorChunk:
 
         chunk_video = full_video[start:end]
         print(f"[TKTransitionDetectorChunk] segment {idx}/{seg_count - 1}: frames {start}..{end - 1} ({end - start} frames)")
+        filename_prefix = f"chunks/CHUNK_{idx+1}_of_{seg_count}--"
 
         # ---- audio ----
         if full_audio is not None:
@@ -619,38 +591,33 @@ class TKTransitionDetectorChunk:
             n_samples = int(round((end - start) / fps * sr))
             chunk_audio = {"waveform": torch.zeros((1, 2, n_samples)), "sample_rate": sr}
 
-        return (chunk_video, chunk_audio)
+        return (chunk_video, chunk_audio, filename_prefix)
 
 
 class TKTransitionScenesCount:
-    """Returns how many segments boundary_frames describes.
-    Valid index values for TKTransitionDetectorChunk are 0 .. segment_count-1."""
-
-    INPUT_IS_LIST = True  # receive the whole boundary list in ONE call
+    DESCRIPTION = "Get Transitions Count for Scene Detection"
+    INPUT_IS_LIST = True
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "video": ("IMAGE",),
                 "boundary_frames": (ANY,),
-            },
-            "optional": {
-                # optional: boundaries at/after this frame are ignored (0 = no limit)
-                "total_frames": ("INT", {"default": 0, "min": 0, "max": 100000000}),
             },
         }
 
-    RETURN_TYPES = ("INT", "INT")
-    RETURN_NAMES = ("segment_count", "last_index")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("transitions_count",)
     FUNCTION = "run"
     CATEGORY = "TKNodes"
 
-    def run(self, boundary_frames, total_frames=None):
-        tf = _one(total_frames)
-        limit = int(tf) if tf and tf > 0 else 10**12
-        starts = _extract_starts(boundary_frames, limit)
+    def run(self, video, boundary_frames):
+        full_video = _one(video)
+        total = int(full_video.shape[0])
+        starts = _extract_starts(boundary_frames, total)
         count = len(starts)
-        return (count, count - 1)
-
+        print(f"[TKTransitionScenesCount] total frames {total}, segments {count}")
+        return (count,)
 
 

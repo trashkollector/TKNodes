@@ -609,22 +609,27 @@ class TKLargeVideoChunker:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "path_vid_file": ("STRING", {"default": "", "multiline": False}),
-                "chunk_seconds": ("INT", {"default": 10, "min": 1, "max": 3600, "step": 1}),
-                "index": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
-                "max_duration": ("INT", {"default": 0, "min": 0, "max": 86400, "step": 1}),
+                "path_vid_file": ("STRING", {"default": "", "multiline": False,"tooltip": "Path+filename to video file"}),
+                "chunk_seconds": ("INT", {"default": 10, "min": 1, "max": 3600, "step": 1,"tooltip": "Chunk size for video to ease memory requirements"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,"tooltip": "LOOP index"}),
+                "max_duration": ("INT", {"default": 0, "min": 0, "max": 86400, "step": 1,"tooltip": "Optional : 0=chunk entire file, or set value to chunk smaller amount"}),
             }
         }
 
-    RETURN_TYPES = ("INT", "IMAGE", "AUDIO", "FLOAT", "IMAGE")
-    RETURN_NAMES = ("number_chunks", "chunkOfImages", "chunkOfAudio", "fps", "start_frame")
+    RETURN_TYPES = ("INT",             "IMAGE",         "AUDIO",      "FLOAT",    "IMAGE",           "STRING")
+    RETURN_NAMES = ("number_chunks", "chunkOfImages", "chunkOfAudio", "fps",    "chunk_start_frame",  "filename_prefix")
+    OUTPUT_TOOLTIPS  = (
+        "Total Chunks calculated",
+        "chunked video",
+        "chunked audio",
+        "Frame rate of the source video.",
+        "First frame of this chunk as a single-image batch.",
+    )
     FUNCTION = "load_chunk"
     CATEGORY = "TKNodes/video"
 
     @classmethod
-    def IS_CHANGED(cls, path_vid_file, chunk_seconds, index, max_duration=0):
-        # When an input is wired from another node, ComfyUI calls IS_CHANGED
-        # before that node has run, so the values can be None. Always re-run then.
+    def IS_CHANGED(cls, path_vid_file, chunk_seconds, index, max_duration=0, ):
         if path_vid_file is None or chunk_seconds is None or index is None or max_duration is None:
             return float("nan")
         p = _clean_path(path_vid_file)
@@ -632,8 +637,9 @@ class TKLargeVideoChunker:
             return f"{os.path.getmtime(p)}_{chunk_seconds}_{index}_{max_duration}"
         except OSError:
             return float("nan")
+        
 
-    def load_chunk(self, path_vid_file, chunk_seconds, index, max_duration=0):
+    def load_chunk(self, path_vid_file, chunk_seconds, index, max_duration=0, ):
         path = _clean_path(path_vid_file)
         if not path:
             raise ValueError("TKLargeVideoLooper: path_vid_file is empty.")
@@ -656,9 +662,10 @@ class TKLargeVideoChunker:
                 f"(file has {number_chunks} chunks, valid 0..{number_chunks - 1})."
             )
 
-        start_frame = index * frames_per_chunk
-        want_frames = min(frames_per_chunk, total_frames - start_frame)
-        start_time = start_frame / fps
+        start_frame_in_fullvideo = index * frames_per_chunk
+        want_frames = min(frames_per_chunk, total_frames - start_frame_in_fullvideo)
+        start_time = start_frame_in_fullvideo / fps
+        filename_prefix = f"chunks/CHUNK_{index+1}_of_{number_chunks}--"
 
         # ---------- video ----------
         cmd = [
@@ -718,8 +725,8 @@ class TKLargeVideoChunker:
         audio_out = {"waveform": wave.unsqueeze(0), "sample_rate": sr}  # [1, C, S]
 
           # Extract just the first frame while keeping the 4D batch structure ComfyUI expects
-        first_frame_only = images[0:1]
+        chunk_first_frame = images[0:1]
 
-        return (number_chunks, images, audio_out, float(fps), first_frame_only)
+        return (number_chunks, images, audio_out, float(fps), chunk_first_frame, filename_prefix)
 
 
